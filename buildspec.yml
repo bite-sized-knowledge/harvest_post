@@ -16,7 +16,7 @@ phases:
       - echo Build started for commit DEV
       - echo Building the Docker image...
       - docker buildx build --platform linux/amd64 -t harvest_post:dev .  
-      - docker tag harvest-post:$SHA 396913717156.dkr.ecr.ap-northeast-2.amazonaws.com/harvest-post:dev
+      - docker tag harvest-post:dev 396913717156.dkr.ecr.ap-northeast-2.amazonaws.com/harvest-post:dev
 
   post_build:
     commands:
