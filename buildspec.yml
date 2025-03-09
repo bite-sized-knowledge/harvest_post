@@ -13,16 +13,16 @@ phases:
 
   build:
     commands:
-      - echo Build started for commit $SHA
+      - echo Build started for commit DEV
       - echo Building the Docker image...
       - docker buildx build --platform linux/amd64 -t harvest_post:dev .  
-      - docker tag harvest-post:$SHA 396913717156.dkr.ecr.ap-northeast-2.amazonaws.com/harvest-post:$SHA
+      - docker tag harvest-post:$SHA 396913717156.dkr.ecr.ap-northeast-2.amazonaws.com/harvest-post:dev
 
   post_build:
     commands:
-      - echo Build completed for commit $SHA
+      - echo Build completed for commit DEV
       - echo Pushing the Docker image to ECR...
-      - docker push 396913717156.dkr.ecr.ap-northeast-2.amazonaws.com/harvest-post:$SHA
+      - docker push 396913717156.dkr.ecr.ap-northeast-2.amazonaws.com/harvest-post:dev
 
       # Check if the Lambda function exists to update or create it
       - echo "Running the custom shell script..."
