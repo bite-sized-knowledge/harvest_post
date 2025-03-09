@@ -9,6 +9,5 @@ else
     --package-type Image \
     --code ImageUri=396913717156.dkr.ecr.ap-northeast-2.amazonaws.com/harvest-post:dev \
     --role arn:aws:iam::396913717156:role/lambda-execution-role \
-    --environment Variables="{NUMPY_ARRAY='[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]'}" \
     --region ap-northeast-2
 fi
