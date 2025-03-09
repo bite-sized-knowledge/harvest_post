@@ -34,12 +34,12 @@ aws iam put-role-policy \
                 "codebuild:BatchPutCodeCoverages",
                 "codebuild:BatchPutTestCases"
             ],
-            "Resource": "arn:aws:codebuild:${REGION_ID}:${ACCOUNT_ID}:report-group/MyLambdaBuildProject-*"
+            "Resource": "arn:aws:codebuild:ap-northeast-2:396913717156:report-group/bite-lambda-*"
         },
         {
             "Effect": "Allow",
             "Action": "iam:PassRole",
-            "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/lambda-execution-role"
+            "Resource": "arn:aws:iam::396913717156:role/lambda-execution-role"
         },
         {
             "Effect": "Allow",
@@ -49,21 +49,21 @@ aws iam put-role-policy \
                 "logs:PutLogEvents"
             ],
             "Resource": [
-                "arn:aws:logs:${REGION_ID}:${ACCOUNT_ID}:log-group:/aws/codebuild/MyLambdaBuildProject",
-                "arn:aws:logs:${REGION_ID}:${ACCOUNT_ID}:log-group:/aws/codebuild/MyLambdaBuildProject:*"
+                "arn:aws:logs:ap-northeast-2:396913717156:log-group:/aws/codebuild/bite-lambda",
+                "arn:aws:logs:ap-northeast-2:396913717156:log-group:/aws/codebuild/bite-lambda:*"
             ]
         },
         {
             "Effect": "Allow",
             "Action": "lambda:*",
-            "Resource": "arn:aws:lambda:${REGION_ID}:${ACCOUNT_ID}:function:container-lambda"
+            "Resource": "arn:aws:lambda:ap-northeast-2:396913717156:function:container-lambda"
         },
         {
             "Effect": "Allow",
             "Action": "s3:*",
             "Resource": [
-                "arn:aws:s3:::${ARTIFACTS_BUCKET_NAME}",
-                "arn:aws:s3:::${ARTIFACTS_BUCKET_NAME}/*"
+                "arn:aws:s3:::harvest-post",
+                "arn:aws:s3:::harvest-post/*"
             ]
         }
     ]
@@ -100,19 +100,19 @@ aws iam put-role-policy \
                 "codebuild:StartBuild",
                 "codebuild:BatchGetBuilds"
             ],
-            "Resource": "arn:aws:codebuild:${REGION_ID}:${ACCOUNT_ID}:project/MyLambdaBuildProject"
+            "Resource": "arn:aws:codebuild:ap-northeast-2:396913717156:project/bite-lambda"
         },
         {
             "Effect": "Allow",
             "Action": [
                 "codestar-connections:UseConnection"
             ],
-            "Resource": "${GITHUB_CONNECTION_ARN}"
+            "Resource": "arn:aws:codeconnections:ap-northeast-2:396913717156:connection/74b245db-6c86-4185-b0b4-e40ce21a6870"
         },
         {
             "Effect": "Allow",
             "Action": "s3:PutObject",
-            "Resource": "arn:aws:s3:::${ARTIFACTS_BUCKET_NAME}/*"
+            "Resource": "arn:aws:s3:::harvest-post/*"
         }
     ]
 }'

@@ -9,20 +9,20 @@ phases:
   pre_build:
     commands:
       - echo Logging in to Amazon ECR...
-      - aws ecr get-login-password --region ${REGION_ID} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${REGION_ID}.amazonaws.com
+      - aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 396913717156.dkr.ecr.ap-northeast-2.amazonaws.com
 
   build:
     commands:
       - echo Build started for commit $SHA
       - echo Building the Docker image...
-      - docker build -t lambda-from-container-image:$SHA .
-      - docker tag lambda-from-container-image:$SHA ${ACCOUNT_ID}.dkr.ecr.${REGION_ID}.amazonaws.com/lambda-from-container-image:$SHA
+      - docker buildx build --platform linux/amd64 -t harvest_post:dev .  
+      - docker tag harvest-post:$SHA 396913717156.dkr.ecr.ap-northeast-2.amazonaws.com/harvest-post:$SHA
 
   post_build:
     commands:
       - echo Build completed for commit $SHA
       - echo Pushing the Docker image to ECR...
-      - docker push ${ACCOUNT_ID}.dkr.ecr.${REGION_ID}.amazonaws.com/lambda-from-container-image:$SHA
+      - docker push 396913717156.dkr.ecr.ap-northeast-2.amazonaws.com/harvest-post:$SHA
 
       # Check if the Lambda function exists to update or create it
       - echo "Running the custom shell script..."

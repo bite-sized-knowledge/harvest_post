@@ -1,8 +1,8 @@
 {
-    "name": "MyLambdaBuildProject",
+    "name": "bite-lambda",
     "source": {
         "type": "GITHUB",
-        "location": "https://github.com/${GITHUB_USERNAME}/${GITHUB_REPONAME}.git",
+        "location": "https://github.com/bite-sized-knowledge/harvest_post.git",
         "gitCloneDepth": 0,
         "gitSubmodulesConfig": {
             "fetchSubmodules": false
@@ -15,10 +15,10 @@
     "secondarySourceVersions": [],
     "artifacts": {
         "type": "S3",
-        "location": "${ARTIFACTS_BUCKET_NAME}",
+        "location": "harvest-post",
         "path": "",
         "namespaceType": "NONE",
-        "name": "MyLambdaBuildProject",
+        "name": "bite-lambda",
         "packaging": "NONE",
         "overrideArtifactName": false,
         "encryptionDisabled": false
@@ -35,10 +35,10 @@
         "privilegedMode": false,
         "imagePullCredentialsType": "CODEBUILD"
     },
-    "serviceRole": "arn:aws:iam::${ACCOUNT_ID}:role/containerlambdacicd-codebuild-role",
+    "serviceRole": "arn:aws:iam::396913717156:role/containerlambdacicd-codebuild-role",
     "timeoutInMinutes": 60,
     "queuedTimeoutInMinutes": 480,
-    "encryptionKey": "arn:aws:kms:${REGION_ID}:${ACCOUNT_ID}:alias/aws/s3",
+    "encryptionKey": "arn:aws:kms:ap-northeast-2:396913717156:alias/aws/s3",
     "tags": [],
     "logsConfig": {
         "cloudWatchLogs": {
