@@ -20,4 +20,4 @@ jobs:
           aws-region: ap-northeast-2
       
       - name: Code build
-        run: aws codebuild bite-lambda
+        run: aws codebuild start-build --project-name bite-lambda
