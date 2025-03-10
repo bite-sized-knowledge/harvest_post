@@ -1,5 +1,5 @@
 {
-    "projectName": "bite-lambda",
+    "name": "bite-lambda",
     "source": {
         "type": "GITHUB",
         "location": "https://github.com/bite-sized-knowledge/harvest_post.git",
@@ -7,6 +7,7 @@
         "gitSubmodulesConfig": {
             "fetchSubmodules": false
         },
+        "buildspec": "",
         "reportBuildStatus": false,
         "insecureSsl": false
     },
