@@ -1,0 +1,8 @@
+name: Code Build & Deploy
+on: [push]
+jobs:
+  Code-Build-Job:
+    runs-on:
+      - aws codebuild bite-lambda
+    steps:
+      - run: echo "Build Starts..."
