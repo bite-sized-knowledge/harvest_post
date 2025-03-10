@@ -21,6 +21,22 @@ phases:
 
   post_build:
     commands:
+      - echo Updating lambda function environment variables...
+      - |
+        MAX_ATTEMPTS=10
+        ATTEMPT=0
+        FUNCTION_STATE=$(aws lambda get-function --function-name harvest-post --query 'Configuration.State' --output text)
+        while [ "$FUNCTION_STATE" != "Active" ] && [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+          echo "Waiting for Lambda function to become Active..."
+          sleep 100
+          ATTEMPT=$((ATTEMPT+1))
+          FUNCTION_STATE=$(aws lambda get-function --function-name havest-post --query 'Configuration.State' --output text)
+        done
+        if [ "$FUNCTION_STATE" != "Active" ]; then
+          echo "Lambda function did not become Active in time. Exiting..."
+          sleep 30
+        fi
+
       - echo Build completed for commit DEV
       - echo Pushing the Docker image to ECR...
       - docker push 396913717156.dkr.ecr.ap-northeast-2.amazonaws.com/harvest-post:dev
