@@ -3,6 +3,8 @@ on: [push]
 jobs:
   Code-Build-Job:
     runs-on:
-      - aws codebuild bite-lambda
+      - codebuild-bite-lambda-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - run: echo "Build Starts..."
+      - uses: actions/checkout@v4
+      - name: Build Start
+        run: echo "Build Starts..."
