@@ -1,0 +1,92 @@
+{
+    "pipeline": {
+        "name": "MyLambdaPipeline",
+        "roleArn": "arn:aws:iam::381492102179:role/containerlambdacicd-codepipeline-role",
+        "artifactStore": {
+            "type": "S3",
+            "location": "${ARTIFACTS_BUCKET_NAME}"
+        },
+        "stages": [
+            {
+                "name": "Source",
+                "actions": [
+                    {
+                        "name": "Source",
+                        "actionTypeId": {
+                            "category": "Source",
+                            "owner": "AWS",
+                            "provider": "CodeStarSourceConnection",
+                            "version": "1"
+                        },
+                        "runOrder": 1,
+                        "configuration": {
+                            "BranchName": "main",
+                            "ConnectionArn": "${GITHUB_CONNECTION_ARN}",
+                            "DetectChanges": "true",
+                            "FullRepositoryId": "${GITHUB_USERNAME}/${GITHUB_REPONAME}",
+                            "OutputArtifactFormat": "CODE_ZIP"
+                        },
+                        "outputArtifacts": [
+                            {
+                                "name": "SourceArtifact"
+                            }
+                        ],
+                        "inputArtifacts": [],
+                        "region": "${REGION_ID}",
+                        "namespace": "SourceVariables"
+                    }
+                ]
+            },
+            {
+                "name": "BuildAndDeploy",
+                "actions": [
+                    {
+                        "name": "BuildAndDeploy",
+                        "actionTypeId": {
+                            "category": "Build",
+                            "owner": "AWS",
+                            "provider": "CodeBuild",
+                            "version": "1"
+                        },
+                        "runOrder": 1,
+                        "configuration": {
+                            "ProjectName": "MyLambdaBuildProject"
+                        },
+                        "outputArtifacts": [
+                            {
+                                "name": "BuildArtifact"
+                            }
+                        ],
+                        "inputArtifacts": [
+                            {
+                                "name": "SourceArtifact"
+                            }
+                        ],
+                        "region": "${REGION_ID}",
+                        "namespace": "BuildVariables"
+                    }
+                ]
+            }
+        ],
+        "version": 5,
+        "executionMode": "QUEUED",
+        "pipelineType": "V2",
+        "triggers": [
+            {
+                "providerType": "CodeStarSourceConnection",
+                "gitConfiguration": {
+                    "sourceActionName": "Source",
+                    "push": [
+                        {
+                            "branches": {
+                                "includes": [
+                                    "main"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+}
