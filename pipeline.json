@@ -1,7 +1,7 @@
 {
     "pipeline": {
-        "name": "MyLambdaPipeline",
-        "roleArn": "arn:aws:iam::381492102179:role/harvest-post-codepipeline-role",
+        "name": "harvest-post-pipeline",
+        "roleArn": "arn:aws:iam::396913717156:role/harvest-post-codepipeline-role",
         "artifactStore": {
             "type": "S3",
             "location": "harvest-post"
