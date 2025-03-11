@@ -1,5 +1,5 @@
 {
-    "name": "havest-post-prj",
+    "name": "harvest-post-prj",
     "source": {
         "type": "GITHUB",
         "location": "https://github.com/bite-sized-knowledge/harvest_post.git",
@@ -15,10 +15,10 @@
     "secondarySourceVersions": [],
     "artifacts": {
         "type": "S3",
-        "location": "havest-post",
+        "location": "harvest-post",
         "path": "",
         "namespaceType": "NONE",
-        "name": "havest-post-prj",
+        "name": "harvest-post-prj",
         "packaging": "NONE",
         "overrideArtifactName": false,
         "encryptionDisabled": false
@@ -35,7 +35,7 @@
         "privilegedMode": false,
         "imagePullCredentialsType": "CODEBUILD"
     },
-    "serviceRole": "arn:aws:iam::396913717156:role/havest-post-codebuild-role",
+    "serviceRole": "arn:aws:iam::396913717156:role/harvest-post-codebuild-role",
     "timeoutInMinutes": 60,
     "queuedTimeoutInMinutes": 480,
     "encryptionKey": "arn:aws:kms:ap-northeast-2:396913717156:alias/aws/s3",

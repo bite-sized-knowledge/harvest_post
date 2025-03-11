@@ -1,10 +1,10 @@
 {
     "pipeline": {
         "name": "MyLambdaPipeline",
-        "roleArn": "arn:aws:iam::381492102179:role/havest-post-codepipeline-role",
+        "roleArn": "arn:aws:iam::381492102179:role/harvest-post-codepipeline-role",
         "artifactStore": {
             "type": "S3",
-            "location": "havest-post"
+            "location": "harvest-post"
         },
         "stages": [
             {
@@ -50,7 +50,7 @@
                         },
                         "runOrder": 1,
                         "configuration": {
-                            "ProjectName": "havest-post-prj"
+                            "ProjectName": "harvest-post-prj"
                         },
                         "outputArtifacts": [
                             {

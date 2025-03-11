@@ -1,5 +1,5 @@
 aws iam create-role \
---role-name havest-post-codebuild-role \
+--role-name harvest-post-codebuild-role \
 --assume-role-policy-document '{
     "Version": "2012-10-17",
     "Statement": [
@@ -15,8 +15,8 @@ aws iam create-role \
 
 
 aws iam put-role-policy \
---role-name havest-post-codebuild-role \
---policy-name havest-post-codebuild-inline-policy \
+--role-name harvest-post-codebuild-role \
+--policy-name harvest-post-codebuild-inline-policy \
 --policy-document '{
     "Version": "2012-10-17",
     "Statement": [
@@ -34,7 +34,7 @@ aws iam put-role-policy \
                 "codebuild:BatchPutCodeCoverages",
                 "codebuild:BatchPutTestCases"
             ],
-            "Resource": "arn:aws:codebuild:ap-northeast-2:396913717156:report-group/havest-post-prj-*"
+            "Resource": "arn:aws:codebuild:ap-northeast-2:396913717156:report-group/harvest-post-prj-*"
         },
         {
             "Effect": "Allow",
@@ -49,8 +49,8 @@ aws iam put-role-policy \
                 "logs:PutLogEvents"
             ],
             "Resource": [
-                "arn:aws:logs:ap-northeast-2:396913717156:log-group:/aws/codebuild/havest-post-prj",
-                "arn:aws:logs:ap-northeast-2:396913717156:log-group:/aws/codebuild/havest-post-prj:*"
+                "arn:aws:logs:ap-northeast-2:396913717156:log-group:/aws/codebuild/harvest-post-prj",
+                "arn:aws:logs:ap-northeast-2:396913717156:log-group:/aws/codebuild/harvest-post-prj:*"
             ]
         },
         {
@@ -62,8 +62,8 @@ aws iam put-role-policy \
             "Effect": "Allow",
             "Action": "s3:*",
             "Resource": [
-                "arn:aws:s3:::havest-post",
-                "arn:aws:s3:::havest-post/*"
+                "arn:aws:s3:::harvest-post",
+                "arn:aws:s3:::harvest-post/*"
             ]
         }
     ]
@@ -71,7 +71,7 @@ aws iam put-role-policy \
 
 
 aws iam create-role \
---role-name havest-post-codepipeline-role \
+--role-name harvest-post-codepipeline-role \
 --assume-role-policy-document '{
     "Version": "2012-10-17",
     "Statement": [
@@ -89,8 +89,8 @@ aws iam create-role \
 
 
 aws iam put-role-policy \
---role-name havest-post-codepipeline-role \
---policy-name havest-post-codepipeline-inline-policy \
+--role-name harvest-post-codepipeline-role \
+--policy-name harvest-post-codepipeline-inline-policy \
 --policy-document '{
     "Version": "2012-10-17",
     "Statement": [
@@ -100,7 +100,7 @@ aws iam put-role-policy \
                 "codebuild:StartBuild",
                 "codebuild:BatchGetBuilds"
             ],
-            "Resource": "arn:aws:codebuild:ap-northeast-2:396913717156:project/havest-post-prj"
+            "Resource": "arn:aws:codebuild:ap-northeast-2:396913717156:project/harvest-post-prj"
         },
         {
             "Effect": "Allow",
@@ -112,7 +112,7 @@ aws iam put-role-policy \
         {
             "Effect": "Allow",
             "Action": "s3:PutObject",
-            "Resource": "arn:aws:s3:::havest-post/*"
+            "Resource": "arn:aws:s3:::harvest-post/*"
         }
     ]
 }'

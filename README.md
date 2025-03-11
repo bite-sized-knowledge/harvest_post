@@ -5,21 +5,21 @@
 ## Copy the GitHub repository
 
 Copy the repository into a new one you will own using the following link:
-[Copy to a new repository from the repository template](https://github.com/new?template_name=havest-post-blog&template_owner=javiercarreraruiz)
+[Copy to a new repository from the repository template](https://github.com/new?template_name=harvest-post-blog&template_owner=javiercarreraruiz)
 
 ## Clone your new GitHub repository
 
-Assuming you called your new repo _havest-post-blog-mycopy_, change the _yourgithubname_ string to your GitHub username (or Org) run this on your machine:
+Assuming you called your new repo _harvest-post-blog-mycopy_, change the _yourgithubname_ string to your GitHub username (or Org) run this on your machine:
 
 ```
-git clone https://github.com/yourgithubname/havest-post-blog-mycopy.git
-cd havest-post-blog-mycopy
+git clone https://github.com/yourgithubname/harvest-post-blog-mycopy.git
+cd harvest-post-blog-mycopy
 ```
 
 ## Create the artifacts bucket
 
 ```
-export ARTIFACTS_BUCKET_NAME=havest-post-blog-artifacts
+export ARTIFACTS_BUCKET_NAME=harvest-post-blog-artifacts
 aws s3 mb s3://$ARTIFACTS_BUCKET_NAME
 ```
 
@@ -51,7 +51,7 @@ export REGION_ID=SOMETHING_LIKE_eu-west-1
 export ARTIFACTS_BUCKET_NAME=THE_BUCKET_YOU_CREATED_PREVIOUSLY
 export GITHUB_CONNECTION_ARN=THE_AWS_CODECONNECTIONS_CONNECTION_ARN
 export GITHUB_USERNAME=yourgithubname
-export GITHUB_REPONAME=havest-post-blog-mycopy
+export GITHUB_REPONAME=harvest-post-blog-mycopy
 ```
 
 ```
@@ -97,7 +97,7 @@ aws codestar-connections delete-connection --connection-arn $GITHUB_CONNECTION_A
 aws codepipeline delete-pipeline --name MyLambdaPipeline
 
 # Delete CodeBuild project
-aws codebuild delete-project --name havest-post-prj
+aws codebuild delete-project --name harvest-post-prj
 
 # Delete the ECR repository (after deleting the images)
 aws ecr batch-delete-image --repository-name harvest-post --image-ids "$(aws ecr list-images --repository-name harvest-post --query 'imageIds[*]' --output json | jq -c '.[]')"
@@ -113,16 +113,16 @@ done
 aws iam delete-role --role-name lambda-execution-role
 
 # Force delete CodePipeline role (delete inline policies, and delete role)
-for policy_name in $(aws iam list-role-policies --role-name havest-post-codepipeline-role --query 'PolicyNames[]' --output text); do
-  aws iam delete-role-policy --role-name havest-post-codepipeline-role --policy-name $policy_name
+for policy_name in $(aws iam list-role-policies --role-name harvest-post-codepipeline-role --query 'PolicyNames[]' --output text); do
+  aws iam delete-role-policy --role-name harvest-post-codepipeline-role --policy-name $policy_name
 done
-aws iam delete-role --role-name havest-post-codepipeline-role
+aws iam delete-role --role-name harvest-post-codepipeline-role
 
 # Force delete CodeBuild role (delete inline policies, and delete role)
-for policy_name in $(aws iam list-role-policies --role-name havest-post-codebuild-role --query 'PolicyNames[]' --output text); do
-  aws iam delete-role-policy --role-name havest-post-codebuild-role --policy-name $policy_name
+for policy_name in $(aws iam list-role-policies --role-name harvest-post-codebuild-role --query 'PolicyNames[]' --output text); do
+  aws iam delete-role-policy --role-name harvest-post-codebuild-role --policy-name $policy_name
 done
-aws iam delete-role --role-name havest-post-codebuild-role
+aws iam delete-role --role-name harvest-post-codebuild-role
 
 # Delete all objects in the artifacts bucket
 aws s3 rm s3://$ARTIFACTS_BUCKET_NAME --recursive
