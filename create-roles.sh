@@ -1,5 +1,5 @@
 aws iam create-role \
---role-name containerlambdacicd-codebuild-role \
+--role-name havest-post-codebuild-role \
 --assume-role-policy-document '{
     "Version": "2012-10-17",
     "Statement": [
@@ -15,8 +15,8 @@ aws iam create-role \
 
 
 aws iam put-role-policy \
---role-name containerlambdacicd-codebuild-role \
---policy-name containerlambdacicd-codebuild-inline-policy \
+--role-name havest-post-codebuild-role \
+--policy-name havest-post-codebuild-inline-policy \
 --policy-document '{
     "Version": "2012-10-17",
     "Statement": [
@@ -34,12 +34,12 @@ aws iam put-role-policy \
                 "codebuild:BatchPutCodeCoverages",
                 "codebuild:BatchPutTestCases"
             ],
-            "Resource": "arn:aws:codebuild:${REGION_ID}:${ACCOUNT_ID}:report-group/MyLambdaBuildProject-*"
+            "Resource": "arn:aws:codebuild:ap-northeast-2:396913717156:report-group/havest-post-prj-*"
         },
         {
             "Effect": "Allow",
             "Action": "iam:PassRole",
-            "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/lambda-execution-role"
+            "Resource": "arn:aws:iam::396913717156:role/lambda-execution-role"
         },
         {
             "Effect": "Allow",
@@ -49,21 +49,21 @@ aws iam put-role-policy \
                 "logs:PutLogEvents"
             ],
             "Resource": [
-                "arn:aws:logs:${REGION_ID}:${ACCOUNT_ID}:log-group:/aws/codebuild/MyLambdaBuildProject",
-                "arn:aws:logs:${REGION_ID}:${ACCOUNT_ID}:log-group:/aws/codebuild/MyLambdaBuildProject:*"
+                "arn:aws:logs:ap-northeast-2:396913717156:log-group:/aws/codebuild/havest-post-prj",
+                "arn:aws:logs:ap-northeast-2:396913717156:log-group:/aws/codebuild/havest-post-prj:*"
             ]
         },
         {
             "Effect": "Allow",
             "Action": "lambda:*",
-            "Resource": "arn:aws:lambda:${REGION_ID}:${ACCOUNT_ID}:function:container-lambda"
+            "Resource": "arn:aws:lambda:ap-northeast-2:396913717156:function:container-lambda"
         },
         {
             "Effect": "Allow",
             "Action": "s3:*",
             "Resource": [
-                "arn:aws:s3:::${ARTIFACTS_BUCKET_NAME}",
-                "arn:aws:s3:::${ARTIFACTS_BUCKET_NAME}/*"
+                "arn:aws:s3:::havest-post",
+                "arn:aws:s3:::havest-post/*"
             ]
         }
     ]
@@ -71,7 +71,7 @@ aws iam put-role-policy \
 
 
 aws iam create-role \
---role-name containerlambdacicd-codepipeline-role \
+--role-name havest-post-codepipeline-role \
 --assume-role-policy-document '{
     "Version": "2012-10-17",
     "Statement": [
@@ -89,8 +89,8 @@ aws iam create-role \
 
 
 aws iam put-role-policy \
---role-name containerlambdacicd-codepipeline-role \
---policy-name containerlambdacicd-codepipeline-inline-policy \
+--role-name havest-post-codepipeline-role \
+--policy-name havest-post-codepipeline-inline-policy \
 --policy-document '{
     "Version": "2012-10-17",
     "Statement": [
@@ -100,19 +100,19 @@ aws iam put-role-policy \
                 "codebuild:StartBuild",
                 "codebuild:BatchGetBuilds"
             ],
-            "Resource": "arn:aws:codebuild:${REGION_ID}:${ACCOUNT_ID}:project/MyLambdaBuildProject"
+            "Resource": "arn:aws:codebuild:ap-northeast-2:396913717156:project/havest-post-prj"
         },
         {
             "Effect": "Allow",
             "Action": [
                 "codestar-connections:UseConnection"
             ],
-            "Resource": "${GITHUB_CONNECTION_ARN}"
+            "Resource": "arn:aws:codeconnections:ap-northeast-2:396913717156:connection/a331978c-d000-4938-b764-a72003b6dcc4"
         },
         {
             "Effect": "Allow",
             "Action": "s3:PutObject",
-            "Resource": "arn:aws:s3:::${ARTIFACTS_BUCKET_NAME}/*"
+            "Resource": "arn:aws:s3:::havest-post/*"
         }
     ]
 }'

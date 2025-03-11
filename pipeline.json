@@ -1,10 +1,10 @@
 {
     "pipeline": {
         "name": "MyLambdaPipeline",
-        "roleArn": "arn:aws:iam::381492102179:role/containerlambdacicd-codepipeline-role",
+        "roleArn": "arn:aws:iam::381492102179:role/havest-post-codepipeline-role",
         "artifactStore": {
             "type": "S3",
-            "location": "${ARTIFACTS_BUCKET_NAME}"
+            "location": "havest-post"
         },
         "stages": [
             {
@@ -21,9 +21,9 @@
                         "runOrder": 1,
                         "configuration": {
                             "BranchName": "main",
-                            "ConnectionArn": "${GITHUB_CONNECTION_ARN}",
+                            "ConnectionArn": "arn:aws:codeconnections:ap-northeast-2:396913717156:connection/a331978c-d000-4938-b764-a72003b6dcc4",
                             "DetectChanges": "true",
-                            "FullRepositoryId": "${GITHUB_USERNAME}/${GITHUB_REPONAME}",
+                            "FullRepositoryId": "bite-sized-knowledge/harvest_post",
                             "OutputArtifactFormat": "CODE_ZIP"
                         },
                         "outputArtifacts": [
@@ -32,7 +32,7 @@
                             }
                         ],
                         "inputArtifacts": [],
-                        "region": "${REGION_ID}",
+                        "region": "ap-northeast-2",
                         "namespace": "SourceVariables"
                     }
                 ]
@@ -50,7 +50,7 @@
                         },
                         "runOrder": 1,
                         "configuration": {
-                            "ProjectName": "MyLambdaBuildProject"
+                            "ProjectName": "havest-post-prj"
                         },
                         "outputArtifacts": [
                             {
@@ -62,7 +62,7 @@
                                 "name": "SourceArtifact"
                             }
                         ],
-                        "region": "${REGION_ID}",
+                        "region": "ap-northeast-2",
                         "namespace": "BuildVariables"
                     }
                 ]
