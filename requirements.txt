@@ -1,2 +1,6 @@
 #requirements.txt
 numpy
+boto3
+paramiko
+pymysql
+sshtunnel
