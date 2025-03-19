@@ -12,6 +12,6 @@ docker build -t lambda-local .
 docker run -p 9000:8080 \
   --env-file .env \
   -e AWS_ACCESS_KEY_ID=$(aws_access_key_id) \
-  -e AWS_SECRET_ACCESS_KEY=$( aws_secret_access_key) \
+  -e AWS_SECRET_ACCESS_KEY=$(aws_secret_access_key) \
   lambda-local
 ```
