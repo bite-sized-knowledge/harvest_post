@@ -1,6 +1,7 @@
 #requirements.txt
+python-dotenv
 numpy
+pandas
 boto3
 paramiko
 pymysql
-sshtunnel
