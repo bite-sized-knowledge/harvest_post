@@ -1,4 +1,4 @@
-# Use the aws python3.12 lambda image 
+# Use the aws python3.11 lambda image 
 FROM public.ecr.aws/lambda/python:3.11
 
 # Install the function's dependencies using file requirements.txt

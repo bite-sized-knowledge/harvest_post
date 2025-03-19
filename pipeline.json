@@ -20,7 +20,7 @@
                         },
                         "runOrder": 1,
                         "configuration": {
-                            "BranchName": "main",
+                            "BranchName": "prod",
                             "ConnectionArn": "arn:aws:codeconnections:ap-northeast-2:396913717156:connection/a331978c-d000-4938-b764-a72003b6dcc4",
                             "DetectChanges": "true",
                             "FullRepositoryId": "bite-sized-knowledge/harvest_post",
@@ -80,7 +80,7 @@
                         {
                             "branches": {
                                 "includes": [
-                                    "main"
+                                    "prod"
                                 ]
                             }
                         }
