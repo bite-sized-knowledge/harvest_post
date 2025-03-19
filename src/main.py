@@ -1,14 +1,11 @@
 import json
 import os
-import ast
-# Importing internal libraries
+from db_conn import Connection
 
 def lambda_handler(event, context):
-    # Run different types of helper functions
-    # Return from Lambda
+    conn = Connection()
+
     return {
         'statusCode': 200,
-        'body': json.dumps({
-            'message': 'This is basic Settings'
-        })
+        'body' : conn.ENVIRONMENT
     }
