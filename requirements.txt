@@ -7,3 +7,7 @@ paramiko
 pymysql
 beautifulsoup4
 lxml
+
+langchain
+langchain-openai
+pydantic
