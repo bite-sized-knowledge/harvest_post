@@ -5,3 +5,9 @@ pandas
 boto3
 paramiko
 pymysql
+beautifulsoup4
+lxml
+
+langchain
+langchain-openai
+pydantic

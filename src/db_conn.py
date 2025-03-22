@@ -50,11 +50,11 @@ class Connection:
             raise Exception("No active DB connection.")
         return pd.read_sql(query, self.connection)
 
-    def _raw_execute(self, query):
+    def _raw_execute(self, query, values:set=None):
         if not self.connection:
             raise Exception("No active DB connection.")
         with self.connection.cursor() as cursor:
-            cursor.execute(query)
+            cursor.execute(query, values)
             self.connection.commit()
 
     def close(self):
