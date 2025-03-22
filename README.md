@@ -1,6 +1,6 @@
 # 🌽 Harvest Post Lambda 
 
-![Image](https://github.com/user-attachments/assets/5ede42f6-263d-4a21-836d-a386ec09bb3c)
+![Image](https://github.com/user-attachments/assets/4572e08a-76d7-4ac6-9b8c-1c8717efdd30)
 
 > `Bite-Knowledge` 프로젝트에서 데이터 수집 후 텍스트 전처리를 담당하는 AWS Lambda 저장소
 
