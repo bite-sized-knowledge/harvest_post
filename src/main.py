@@ -15,42 +15,59 @@ MODEL = LangChainModel()
 
 async def process_article(data, conn):
     """비동기로 개별 데이터를 처리하는 함수"""
+    article_id = data.get('article_id')
     blog_id = int(data.get("blog_id"))
     text = data.get("content")
+    description = data.get("description")
 
-    print(f"[START] Processing article: {data.get('article_id')}")
+    published_at = data.get('published_at')
+    created_at = data.get('created_at')
+    updated_at = data.get('updated_at')
+
+    print(f"[START] Processing article: {article_id}")
 
     try:
         # 텍스트 전처리 및 모델 예측을 비동기로 실행
-        print(f"[PREPROCESS] Article ID: {data.get('article_id')}")
-        preprocessed = await asyncio.to_thread(PREPROCESSOR.process, text, blog_id)
+        print(f"[PREPROCESS] Article ID: {article_id}")
+        preprocessed = await asyncio.to_thread(PREPROCESSOR.process, text)
+        desc_processed = await asyncio.to_thread(PREPROCESSOR.process, description)
 
-        print(f"[PREDICT] Article ID: {data.get('article_id')}")
+
+        print(f"[PREDICT] Article ID: {article_id}")
         predict = await asyncio.to_thread(MODEL.predict, preprocessed)
-
         values = (
-            data.get("article_id"),
+            article_id,
             blog_id,
             data.get("url"),
             data.get("title"),
             data.get("thumbnail"),
-            data.get("description"),
+            desc_processed,
             "\t".join(predict.keywords),
             CATEGORY_DICT.get(predict.focusing, "NULL"),
             preprocessed,
             predict.content_length,
             predict.lang,
-            data.get("published_at"),
+            published_at,
+            created_at,
+            updated_at,
         )
 
-        print(f"[DB INSERT] Article ID: {data.get('article_id')}")
+        print(f"[DB INSERT] Article ID: {article_id}")
         await asyncio.to_thread(conn._raw_execute, INSERT_QUERY, values)
 
-        print(f"[DONE] Article ID: {data.get('article_id')} inserted successfully.")
+        print(f"[DELETE QUEUE] Removing article_id={article_id} from article_queue...")
+        await asyncio.to_thread(
+            conn._raw_execute,
+            "DELETE FROM article_queue WHERE article_id = %s",
+            (article_id,)
+        )
+
+        print(f"[DONE] Article ID: {article_id} inserted successfully.")
 
     except Exception as e:
-        print(f"[ERROR] Article ID: {data.get('article_id')} - {str(e)}")
-        raise e
+        print(f"[ERROR] Article ID: {article_id} - {str(e)}")
+        # 예외 발생 시 건너뛰기
+        return
 
 def lambda_handler(event, context):
     return asyncio.run(lambda_handler_async())
@@ -70,10 +87,13 @@ async def lambda_handler_async():
             title,
             thumbnail,
             description,
-            content
+            content, 
+            published_at,
+            created_at,
+            updated_at
         FROM 
             article_queue
-        LIMIT 5;
+        LIMIT 6;
         """
     )
     print(f"[FETCH DONE] {len(queued)} articles fetched.")

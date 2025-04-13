@@ -9,7 +9,7 @@ if not ARTICLE_TABLE:
 COLUMN_NAMES = [
     'article_id', 'blog_id', 'url', 'title', 'thumbnail',
     'description', 'keywords', 'category_id', 'content', 'content_length',
-    'lang', 'published_at'
+    'lang','created_at', 'updated_at', 'published_at'
 ]
 
 def build_insert_query(table_name: str, column_names: list) -> str:

@@ -1,14 +1,19 @@
 import re
+from .unicode_escape import decode_unicode_escapes
 from bs4 import BeautifulSoup
 
-def clean_html(html: str, blog_id:int) -> str:
+def clean_html(html: str) -> str:
     """
     입력된 HTML에서 본문 텍스트만 추출하고 필요한 전처리를 수행
     """
+    if html is None:
+        return ""
+
     html = html.lower() 
     html = re.sub(r"'", "", html)
     html = re.sub(r'[“”]', '"', html)
     html = re.sub(r'[\u200B-\u200D\uFEFF]', '', html)
+    html = decode_unicode_escapes(html)
 
     emoji_pattern = re.compile(
         r"[\U0001F600-\U0001F64F"  # 이모지
@@ -23,7 +28,7 @@ def clean_html(html: str, blog_id:int) -> str:
     soup = BeautifulSoup(html, "lxml")
 
     # 2. 불필요한 태그 제거
-    components = ["style", "meta", "link", "head", "noscript", "iframe", "form", "footer", "header", "nav", "aside","img", "script"]
+    components = ["style", "meta", "link", "head", "noscript", "iframe", "form", "footer", "header", "nav", "aside","img"]
     for tag in soup(components):
         tag.decompose()
     
@@ -37,12 +42,11 @@ def clean_html(html: str, blog_id:int) -> str:
         if any(pattern.search(str(div)) for pattern in comment_patterns):
             div.decompose()
 
-    if blog_id == 4: return html
     return soup.get_text()
 
 class BlogPostProcessor:
-    def process(self, text, blog_id):
-        text = clean_html(text, blog_id)
+    def process(self, text):
+        text = clean_html(text)
         text = re.sub(r'\n{2,}', '', text)
         text = re.sub(r'\s{2,}', ' ', text)
         text = re.sub(r'\s+([.,!?])', r'\1', text)
