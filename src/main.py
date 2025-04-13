@@ -2,43 +2,16 @@ import asyncio
 import os
 from http import HTTPStatus
 from db_conn import Connection
+from config import INSERT_QUERY, CATEGORY_DICT
 from response import HTTPResponse
 from llm_pipeline import LangChainModel
 from preprocessing import BlogPostProcessor
-
-# Pre-compile the INSERT query outside the handler
-ARTICLE_TABLE = os.getenv('ARTICLE_TABLE')
-COLUMN_NAMES = [
-    'article_id', 'blog_id', 'url', 'title', 'thumbnail',
-    'description', 'keywords', 'category_id', 'content', 'content_length',
-    'lang', 'published_at'
-]
-COLUMNS_STR = ", ".join(COLUMN_NAMES)
-PLACEHOLDERS = ", ".join(["%s" for _ in COLUMN_NAMES])
-INSERT_QUERY = f"INSERT IGNORE INTO {ARTICLE_TABLE} ({COLUMNS_STR}) VALUES ({PLACEHOLDERS})"
 
 # Call Preprocessor
 PREPROCESSOR = BlogPostProcessor()
 
 # Call Model
 MODEL = LangChainModel()
-
-# Category Matching
-CATEGORY_DICT = {
-    'Frontend': 1,
-    'Backend': 2,
-    'Mobile Engineering': 3,
-    'AI / ML': 4,
-    'Database': 5,
-    'Security / Network': 6,
-    'Design': 7,
-    'Product Manager': 8,
-    'DevOps / Infra': 9,
-    'Hardware / IoT': 10,
-    'QA / Test Engineer': 11,
-    'Culture': 12,
-    'etc': 13
-}
 
 async def process_article(data, conn):
     """비동기로 개별 데이터를 처리하는 함수"""
