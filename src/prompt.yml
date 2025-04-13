@@ -3,11 +3,12 @@ instruction: "Extract the desired information from the following passage and STR
 
 guidelines:
   content:
-    instruction: "Extract the body content from the raw HTML text, FOCUSING on the article's body content but don't have to include code blocks. Discard any sidebars, navigation elements, or boilerplate text. Ensure all meaningful information from the main article body is retained, and any special characters within the article's content should be handled appropriately to maintain readability. Dont summarize or interpret the content."
+    instruction: "Extract the body content from the raw HTML text, FOCUSING on the article's body content. Discard any sidebars, navigation elements, or boilerplate text. Ensure all meaningful information from the main article body is retained, and any special characters within the article's content should be handled appropriately to maintain readability. Dont summarize or interpret the content."
     exclude:
       - "metadata"
       - "title"
       - "author"
+      - "code block"
       - "date"
       - "tags"
       - "categories"

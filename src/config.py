@@ -3,6 +3,7 @@ from enum import Enum
 
 # ---------- Table Configuration ----------
 ARTICLE_TABLE = os.getenv('ARTICLE_TABLE')
+QUEUED_TABLE = "article_queue"
 if not ARTICLE_TABLE:
     raise ValueError("Environment variable 'ARTICLE_TABLE' is not set.")
 
@@ -17,6 +18,28 @@ def build_insert_query(table_name: str, column_names: list) -> str:
     placeholders = ", ".join(["%s"] * len(column_names))
     return f"INSERT IGNORE INTO {table_name} ({columns_str}) VALUES ({placeholders})"
 
+def build_get_queue_query(table_name: str) -> str:
+    query = """
+        SELECT
+            article_id,
+            blog_id,
+            url,
+            title,
+            thumbnail,
+            description,
+            content, 
+            published_at,
+            created_at,
+            updated_at
+        FROM 
+            article_queue"""
+    if os.getenv('ENVIRONMENT') == 'dev':
+        LIMIT = 7
+        return f"{query} LIMIT {LIMIT};" 
+
+    return query
+
+QUEUE_QUERY = build_get_queue_query(QUEUED_TABLE)
 INSERT_QUERY = build_insert_query(ARTICLE_TABLE, COLUMN_NAMES)
 
 # ---------- Category Mapping ----------

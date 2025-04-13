@@ -2,7 +2,7 @@ import asyncio
 import os
 from http import HTTPStatus
 from db_conn import Connection
-from config import INSERT_QUERY, CATEGORY_DICT
+from config import INSERT_QUERY, QUEUE_QUERY, CATEGORY_DICT
 from response import HTTPResponse
 from llm_pipeline import LangChainModel
 from preprocessing import BlogPostProcessor
@@ -78,24 +78,7 @@ async def lambda_handler_async():
     conn = Connection()
 
     print("[FETCH] Getting articles from queue...")
-    queued = conn.execute(
-        """
-        SELECT
-            article_id,
-            blog_id,
-            url,
-            title,
-            thumbnail,
-            description,
-            content, 
-            published_at,
-            created_at,
-            updated_at
-        FROM 
-            article_queue
-        LIMIT 6;
-        """
-    )
+    queued = conn.execute(QUEUE_QUERY)
     print(f"[FETCH DONE] {len(queued)} articles fetched.")
 
     try:
