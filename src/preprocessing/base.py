@@ -38,7 +38,7 @@ def clean_html(html: str, blog_id:int) -> str:
             div.decompose()
 
     if blog_id == 4: return html
-    return soup.get_text(separator="\n", strip=True)
+    return soup.get_text()
 
 class BlogPostProcessor:
     def process(self, text, blog_id):
