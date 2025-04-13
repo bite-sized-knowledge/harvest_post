@@ -8,6 +8,7 @@ def clean_html(html: str, blog_id:int) -> str:
     html = html.lower() 
     html = re.sub(r"'", "", html)
     html = re.sub(r'[“”]', '"', html)
+    html = re.sub(r'[\u200B-\u200D\uFEFF]', '', html)
 
     emoji_pattern = re.compile(
         r"[\U0001F600-\U0001F64F"  # 이모지
@@ -25,15 +26,8 @@ def clean_html(html: str, blog_id:int) -> str:
     components = ["style", "meta", "link", "head", "noscript", "iframe", "form", "footer", "header", "nav", "aside","img", "script"]
     for tag in soup(components):
         tag.decompose()
-
-    # 3. 코드 블록 유지 (pre 태그 변환)
-    for pre in soup.find_all("pre"):
-        code = pre.find("code")
-        lang = pre.get("class", ["plaintext"])[0]  # 언어 감지 (기본값: plaintext)
-        code_content = code.get_text().strip() if code else pre.get_text().strip()
-        pre.replace_with(f"<code language='{lang}'>\n{code_content}\n</code>")
-     
-    # 4. 댓글 섹션 제거 (Disqus, Utterances 등)
+    
+    # 3. 댓글 섹션 제거 (Disqus, Utterances 등)
     comment_patterns = [
         re.compile(r'\bdisqus\b', re.I),
         re.compile(r'\bgisqus\b', re.I),
@@ -44,17 +38,18 @@ def clean_html(html: str, blog_id:int) -> str:
             div.decompose()
 
     if blog_id == 4: return html
-    return soup.get_text()
+    return soup.get_text(separator="\n", strip=True)
 
 class BlogPostProcessor:
-    def __init__(self, text, blog_id):
-        self.text = clean_html(text, blog_id)
-        self.text = re.sub(r'\n{2,}', '', self.text)
-        self.text = re.sub(r'\s{2,}', ' ', self.text)
-        self.text = re.sub(r'\s+([.,!?])', r'\1', self.text)
-        self.text = re.sub(r'\'', '', self.text)
-        self.text = re.sub(r'”', '"', self.text)
+    def process(self, text, blog_id):
+        text = clean_html(text, blog_id)
+        text = re.sub(r'\n{2,}', '', text)
+        text = re.sub(r'\s{2,}', ' ', text)
+        text = re.sub(r'\s+([.,!?])', r'\1', text)
+        text = re.sub(r'\'', '', text)
+        text = re.sub(r'”', '"', text)
+        text = re.sub(r'[^\S\n]{2,}', ' ', text)  
+        text = re.sub(r'([.,!?])\1+', r'\1', text)
 
-    def process(self):
-        raise NotImplementedError("Subclasses should implement this method")
+        return text
 
