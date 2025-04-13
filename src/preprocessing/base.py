@@ -47,14 +47,13 @@ def clean_html(html: str, blog_id:int) -> str:
     return soup.get_text()
 
 class BlogPostProcessor:
-    def __init__(self, text, blog_id):
-        self.text = clean_html(text, blog_id)
-        self.text = re.sub(r'\n{2,}', '', self.text)
-        self.text = re.sub(r'\s{2,}', ' ', self.text)
-        self.text = re.sub(r'\s+([.,!?])', r'\1', self.text)
-        self.text = re.sub(r'\'', '', self.text)
-        self.text = re.sub(r'”', '"', self.text)
+    def process(self, text, blog_id):
+        text = clean_html(text, blog_id)
+        text = re.sub(r'\n{2,}', '', text)
+        text = re.sub(r'\s{2,}', ' ', text)
+        text = re.sub(r'\s+([.,!?])', r'\1', text)
+        text = re.sub(r'\'', '', text)
+        text = re.sub(r'”', '"', text)
 
-    def process(self):
-        raise NotImplementedError("Subclasses should implement this method")
+        return text
 

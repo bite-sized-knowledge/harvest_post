@@ -26,7 +26,8 @@ class LangChainModel:
             model_name=self.prompt_data['model'],
             temperature=0.0
         )
-
+    
+     
 
     def predict(self, text: str) -> TopicClassification:
         primary_chain = self.prompt_generator.prompt | self.model | self.prompt_generator.parser

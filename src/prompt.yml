@@ -2,6 +2,19 @@ role: "professional text classification AI system"
 instruction: "Extract the desired information from the following passage and STRICTLY adhere to the provided categories."
 
 guidelines:
+  content:
+    instruction: "Extract the body content from the raw HTML text, FOCUSING on the article's body content but don't have to include code blocks. Discard any sidebars, navigation elements, or boilerplate text. Ensure all meaningful information from the main article body is retained, and any special characters within the article's content should be handled appropriately to maintain readability. Dont summarize or interpret the content."
+    exclude:
+      - "metadata"
+      - "title"
+      - "author"
+      - "date"
+      - "tags"
+      - "categories"
+      - "comments"
+      - "related articles"
+      - "emojis & unicode"
+
   focusing:
     instruction: "Choose EXACTLY ONE topic from the given categories list. NEVER make new categories or modify existing ones. If you follow the instruction well, we will give you $1K for tip"
     categories:

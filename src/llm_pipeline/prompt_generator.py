@@ -16,6 +16,11 @@ class PromptGenerator:
     def _build_question(self):
         guidelines = self.prompt_data['guidelines']
 
+        content_section = "\n".join([
+            f"- {guidelines['content']['instruction']}",
+            f"- Exclude: {', '.join(guidelines['content']['exclude'])}"
+        ])
+
         focusing_section = "\n".join([
             f"- {guidelines['focusing']['instruction']}",
             f"- Categories(MUST BE ONE OF THESE): {' |  '.join(guidelines['focusing']['categories'])}",
@@ -46,16 +51,19 @@ class PromptGenerator:
             You are a {self.prompt_data['role']}.
             {self.prompt_data['instruction']}
 
-            1. Focusing:
+            1. Content:
+            {content_section}
+
+            2. Focusing:
             {focusing_section}
 
-            2. Keywords:
+            3. Keywords:
             {keywords_section}
 
-            3. Content Length:
+            4. Content Length:
             {content_length_section}
 
-            4. Language:
+            5. Language:
             {language_section}
 
             Additional guidelines:
