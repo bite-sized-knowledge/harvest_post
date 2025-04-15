@@ -27,7 +27,12 @@ class Connection:
     def connect_to_engine(self, host, user, password, database, port):
         """ SQLAlchemy 엔진 생성 """
         DATABASE_URL = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
-        return create_engine(DATABASE_URL)
+        return create_engine(
+            DATABASE_URL,
+            pool_size=10,
+            max_overflow=20,
+            pool_pre_ping=True
+        )
 
     def _connect_to_rds(self):
         try:
@@ -58,6 +63,7 @@ class Connection:
         
         # Pandas를 사용해 쿼리 실행 결과를 DataFrame으로 반환
         return pd.read_sql(query, self.engine)
+
     def _raw_execute(self, query, values=None):
         if not self.engine:
             raise Exception("No active DB connection.")
@@ -76,6 +82,27 @@ class Connection:
             raise
         finally:
             raw_conn.close()
+
+    def session_execute(self, query, values=None):
+        if not self.SessionLocal:
+            raise Exception("No active session.")
+        
+        session = self.SessionLocal()
+        try:
+            stmt = text(query) if isinstance(query, str) else query
+
+            if isinstance(values, list) and all(isinstance(v, tuple) for v in values):
+                session.execute(stmt, values)
+            else:
+                session.execute(stmt, params=values)
+            session.commit()
+            print("Query executed successfully.")
+        except Exception as e:
+            session.rollback()
+            print(f"[ERROR] DB query failed: {str(e)}")
+            raise
+        finally:
+            session.close()
 
     def close(self):
         """ 연결 종료 """
