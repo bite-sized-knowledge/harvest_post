@@ -15,11 +15,11 @@ COLUMN_NAMES = [
 
 def build_insert_query(table_name: str, column_names: list) -> str:
     columns_str = ", ".join(column_names)
-    placeholders = ", ".join(["%s"] * len(column_names))
+    placeholders = ", ".join([":{}".format(col) for col in column_names])
     return f"INSERT IGNORE INTO {table_name} ({columns_str}) VALUES ({placeholders})"
 
 def build_get_queue_query(table_name: str) -> str:
-    query = """
+    query = f"""
         SELECT
             article_id,
             blog_id,
@@ -32,9 +32,9 @@ def build_get_queue_query(table_name: str) -> str:
             created_at,
             updated_at
         FROM 
-            article_queue"""
+            {table_name}"""
     if os.getenv('ENVIRONMENT') == 'dev':
-        LIMIT = 7
+        LIMIT = os.getenv('LIMIT', 5)
         return f"{query} LIMIT {LIMIT};" 
 
     return query

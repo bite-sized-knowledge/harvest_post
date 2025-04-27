@@ -15,6 +15,8 @@ guidelines:
       - "comments"
       - "related articles"
       - "emojis & unicode"
+      - "latex math"
+      - "HTML tags"
 
   focusing:
     instruction: "Choose EXACTLY ONE topic from the given categories list. NEVER make new categories or modify existing ones. If you follow the instruction well, we will give you $1K for tip"

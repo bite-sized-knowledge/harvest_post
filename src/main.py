@@ -1,11 +1,11 @@
 import asyncio
-import os
 from http import HTTPStatus
 from db_conn import Connection
-from config import INSERT_QUERY, QUEUE_QUERY, CATEGORY_DICT
+from config import INSERT_QUERY, QUEUE_QUERY, CATEGORY_DICT, COLUMN_NAMES
 from response import HTTPResponse
 from llm_pipeline import LangChainModel
 from preprocessing import BlogPostProcessor
+from sqlalchemy.sql import text, bindparam
 
 # Call Preprocessor
 PREPROCESSOR = BlogPostProcessor()
@@ -13,67 +13,58 @@ PREPROCESSOR = BlogPostProcessor()
 # Call Model
 MODEL = LangChainModel()
 
-async def process_article(data, conn):
+# 동시 실행 최대 개수 제한
+SEMAPHORE = asyncio.Semaphore(5)
+
+async def process_article(data):
     """비동기로 개별 데이터를 처리하는 함수"""
-    article_id = data.get('article_id')
-    blog_id = int(data.get("blog_id"))
-    text = data.get("content")
-    description = data.get("description")
+    async with SEMAPHORE:
+        article_id = data.get('article_id')
+        blog_id = int(data.get("blog_id"))
+        text = data.get("content")
+        description = data.get("description")
 
-    published_at = data.get('published_at')
-    created_at = data.get('created_at')
-    updated_at = data.get('updated_at')
+        published_at = data.get('published_at')
+        created_at = data.get('created_at')
+        updated_at = data.get('updated_at')
 
-    print(f"[START] Processing article: {article_id}")
+        print(f"[START] Processing article: {article_id}")
 
-    try:
-        # 텍스트 전처리 및 모델 예측을 비동기로 실행
-        print(f"[PREPROCESS] Article ID: {article_id}")
-        preprocessed = await asyncio.to_thread(PREPROCESSOR.process, text)
-        desc_processed = await asyncio.to_thread(PREPROCESSOR.process, description)
+        try:
+            print(f"[PREPROCESS] Article ID: {article_id}")
+            preprocessed = await asyncio.to_thread(PREPROCESSOR.process, text)
+            desc_processed = await asyncio.to_thread(PREPROCESSOR.process, description)
 
+            print(f"[PREDICT] Article ID: {article_id}")
+            predict = await asyncio.to_thread(MODEL.predict, preprocessed)
 
-        print(f"[PREDICT] Article ID: {article_id}")
-        predict = await asyncio.to_thread(MODEL.predict, preprocessed)
-        values = (
-            article_id,
-            blog_id,
-            data.get("url"),
-            data.get("title"),
-            data.get("thumbnail"),
-            desc_processed,
-            "\t".join(predict.keywords),
-            CATEGORY_DICT.get(predict.focusing, "NULL"),
-            preprocessed,
-            predict.content_length,
-            predict.lang,
-            published_at,
-            created_at,
-            updated_at,
-        )
+            values = (
+                article_id,
+                blog_id,
+                data.get("url"),
+                data.get("title"),
+                data.get("thumbnail"),
+                desc_processed,
+                "\t".join(predict.keywords),
+                CATEGORY_DICT.get(predict.focusing, "NULL"),
+                preprocessed,
+                predict.content_length,
+                predict.lang,
+                published_at,
+                created_at,
+                updated_at,
+            )
 
-        print(f"[DB INSERT] Article ID: {article_id}")
-        await asyncio.to_thread(conn._raw_execute, INSERT_QUERY, values)
+            return values, article_id
 
-        print(f"[DELETE QUEUE] Removing article_id={article_id} from article_queue...")
-        await asyncio.to_thread(
-            conn._raw_execute,
-            "DELETE FROM article_queue WHERE article_id = %s",
-            (article_id,)
-        )
-
-        print(f"[DONE] Article ID: {article_id} inserted successfully.")
-
-    except Exception as e:
-        print(f"[ERROR] Article ID: {article_id} - {str(e)}")
-        # 예외 발생 시 건너뛰기
-        return
+        except Exception as e:
+            print(f"[ERROR] Article ID: {article_id} - {str(e)}")
+            return None  # 실패한 경우 무시
 
 def lambda_handler(event, context):
     return asyncio.run(lambda_handler_async())
 
 async def lambda_handler_async():
-    """비동기 Lambda 핸들러"""
     print("[LAMBDA START] Connecting to DB...")
     conn = Connection()
 
@@ -82,16 +73,39 @@ async def lambda_handler_async():
     print(f"[FETCH DONE] {len(queued)} articles fetched.")
 
     try:
-        tasks = [process_article(row, conn) for row in queued.to_dict(orient="records")]
-        await asyncio.gather(*tasks)
+        tasks = [process_article(row) for row in queued.to_dict(orient="records")]
+        results = await asyncio.gather(*tasks)
+
+        insert_rows = []
+        successful_ids = []
+
+        for result in results:
+            if result:
+                values, article_id = result
+                insert_rows.append(values)
+                successful_ids.append(article_id)
+
+        # ORM 기반 batch insert
+        if insert_rows:
+            print(f"[INSERT] Inserting {len(insert_rows)} records...")
+            insert_dicts = [
+                dict(zip(COLUMN_NAMES, row)) for row in insert_rows
+            ]
+            await asyncio.to_thread(conn.session_execute, INSERT_QUERY, insert_dicts)
+
+        # 성공한 article_id만 삭제
+        if successful_ids:
+            print(f"[DELETE] Removing {len(successful_ids)} articles from queue...")
+            delete_query = text("DELETE FROM article_queue WHERE article_id IN :ids").bindparams(
+                bindparam("ids", expanding=True)
+            )
+            await asyncio.to_thread(conn.session_execute, delete_query, {"ids": successful_ids})
 
     except Exception as e:
-        await asyncio.to_thread(conn.close)
         print(f"[FATAL ERROR] {str(e)}")
-        response = HTTPResponse(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
-        return response.get_response()
+        await asyncio.to_thread(conn.close)
+        return HTTPResponse(HTTPStatus.INTERNAL_SERVER_ERROR, str(e)).get_response()
 
     await asyncio.to_thread(conn.close)
     print("[LAMBDA DONE] All tasks completed and DB connection closed.")
-    response = HTTPResponse(HTTPStatus.CREATED)
-    return response.get_response()
+    return HTTPResponse(HTTPStatus.CREATED).get_response()
