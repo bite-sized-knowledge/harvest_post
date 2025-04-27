@@ -74,4 +74,4 @@ additional_guidelines:
   - "Do not include any irrelevant information."
   - "Do not provide information not explicitly stated in the text."
 
-model: "gpt-4o-mini-2024-07-18"
+model: "gpt-4.1-nano-2025-04-14"
