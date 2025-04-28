@@ -13,53 +13,49 @@ PREPROCESSOR = BlogPostProcessor()
 # Call Model
 MODEL = LangChainModel()
 
-# 동시 실행 최대 개수 제한
-SEMAPHORE = asyncio.Semaphore(5)
-
 async def process_article(data):
     """비동기로 개별 데이터를 처리하는 함수"""
-    async with SEMAPHORE:
-        article_id = data.get('article_id')
-        blog_id = int(data.get("blog_id"))
-        text = data.get("content")
-        description = data.get("description")
+    article_id = data.get('article_id')
+    blog_id = int(data.get("blog_id"))
+    text = data.get("content")
+    description = data.get("description")
 
-        published_at = data.get('published_at')
-        created_at = data.get('created_at')
-        updated_at = data.get('updated_at')
+    published_at = data.get('published_at')
+    created_at = data.get('created_at')
+    updated_at = data.get('updated_at')
 
-        print(f"[START] Processing article: {article_id}")
+    print(f"[START] Processing article: {article_id}")
 
-        try:
-            print(f"[PREPROCESS] Article ID: {article_id}")
-            preprocessed = await asyncio.to_thread(PREPROCESSOR.process, text)
-            desc_processed = await asyncio.to_thread(PREPROCESSOR.process, description)
+    try:
+        print(f"[PREPROCESS] Article ID: {article_id}")
+        preprocessed = await asyncio.to_thread(PREPROCESSOR.process, text)
+        desc_processed = await asyncio.to_thread(PREPROCESSOR.process, description)
 
-            print(f"[PREDICT] Article ID: {article_id}")
-            predict = await asyncio.to_thread(MODEL.predict, preprocessed)
+        print(f"[PREDICT] Article ID: {article_id}")
+        predict = await asyncio.to_thread(MODEL.predict, preprocessed)
 
-            values = (
-                article_id,
-                blog_id,
-                data.get("url"),
-                data.get("title"),
-                data.get("thumbnail"),
-                desc_processed,
-                "\t".join(predict.keywords),
-                CATEGORY_DICT.get(predict.focusing, "NULL"),
-                preprocessed,
-                predict.content_length,
-                predict.lang,
-                published_at,
-                created_at,
-                updated_at,
-            )
+        values = (
+            article_id,
+            blog_id,
+            data.get("url"),
+            data.get("title"),
+            data.get("thumbnail"),
+            desc_processed,
+            "\t".join(predict.keywords),
+            CATEGORY_DICT.get(predict.focusing, "NULL"),
+            preprocessed,
+            predict.content_length,
+            predict.lang,
+            published_at,
+            created_at,
+            updated_at,
+        )
 
-            return values, article_id
+        return values, article_id
 
-        except Exception as e:
-            print(f"[ERROR] Article ID: {article_id} - {str(e)}")
-            return None  # 실패한 경우 무시
+    except Exception as e:
+        print(f"[ERROR] Article ID: {article_id} - {str(e)}")
+        return None  # 실패한 경우 무시
 
 def lambda_handler(event, context):
     return asyncio.run(lambda_handler_async())
@@ -71,6 +67,10 @@ async def lambda_handler_async():
     print("[FETCH] Getting articles from queue...")
     queued = conn.execute(QUEUE_QUERY)
     print(f"[FETCH DONE] {len(queued)} articles fetched.")
+
+    if queued is None or len(queued) == 0:
+        return HTTPResponse(HTTPStatus.OK, "Article Queue Empty")
+
 
     try:
         tasks = [process_article(row) for row in queued.to_dict(orient="records")]
