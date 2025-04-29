@@ -10,3 +10,4 @@ lxml
 langchain
 langchain-openai
 pydantic
+trafilatura

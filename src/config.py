@@ -27,14 +27,13 @@ def build_get_queue_query(table_name: str) -> str:
             title,
             thumbnail,
             description,
-            content, 
             published_at,
             created_at,
             updated_at
         FROM 
             {table_name}"""
     if os.getenv('ENVIRONMENT') == 'dev':
-        LIMIT = os.getenv('LIMIT', 5)
+        LIMIT = os.getenv('LIMIT', 10)
         return f"{query} LIMIT {LIMIT};" 
 
     return query

@@ -4,8 +4,9 @@ from db_conn import Connection
 from config import INSERT_QUERY, QUEUE_QUERY, CATEGORY_DICT, COLUMN_NAMES
 from response import HTTPResponse
 from llm_pipeline import LangChainModel
-from preprocessing import BlogPostProcessor
+from preprocessing import BlogPostProcessor, parse_article_text_from_url
 from sqlalchemy.sql import text, bindparam
+
 
 # Call Preprocessor
 PREPROCESSOR = BlogPostProcessor()
@@ -16,8 +17,8 @@ MODEL = LangChainModel()
 async def process_article(data):
     """비동기로 개별 데이터를 처리하는 함수"""
     article_id = data.get('article_id')
+    url = data.get('url')
     blog_id = int(data.get("blog_id"))
-    text = data.get("content")
     description = data.get("description")
 
     published_at = data.get('published_at')
@@ -27,23 +28,26 @@ async def process_article(data):
     print(f"[START] Processing article: {article_id}")
 
     try:
+        text = await asyncio.to_thread(parse_article_text_from_url, url)
+
         print(f"[PREPROCESS] Article ID: {article_id}")
         preprocessed = await asyncio.to_thread(PREPROCESSOR.process, text)
         desc_processed = await asyncio.to_thread(PREPROCESSOR.process, description)
 
         print(f"[PREDICT] Article ID: {article_id}")
         predict = await asyncio.to_thread(MODEL.predict, preprocessed)
+        content = predict.content if len(predict.keywords)>1 else "NULL"
 
         values = (
             article_id,
             blog_id,
-            data.get("url"),
+            url,
             data.get("title"),
             data.get("thumbnail"),
             desc_processed,
             "\t".join(predict.keywords),
             CATEGORY_DICT.get(predict.focusing, "NULL"),
-            preprocessed,
+            content,
             predict.content_length,
             predict.lang,
             published_at,
