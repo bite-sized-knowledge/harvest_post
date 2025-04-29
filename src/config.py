@@ -13,10 +13,23 @@ COLUMN_NAMES = [
     'lang','created_at', 'updated_at', 'published_at'
 ]
 
-def build_insert_query(table_name: str, column_names: list) -> str:
+UPSERT_COLUMNS = [
+    'keywords', 'category_id', 'content', 'content_length', 'lang', 'updated_at'
+]
+
+def build_upsert_query(table_name: str, column_names: list, upsert_columns: list) -> str:
     columns_str = ", ".join(column_names)
-    placeholders = ", ".join([":{}".format(col) for col in column_names])
-    return f"INSERT IGNORE INTO {table_name} ({columns_str}) VALUES ({placeholders})"
+    placeholders = ", ".join([f":{col}" for col in column_names])
+
+    # UPDATE 구문 생성: primary_key 제외한 컬럼만 업데이트
+    update_expr = ", ".join([f"{col}=VALUES({col})" for col in upsert_columns])
+
+    return (
+        f"INSERT INTO {table_name} ({columns_str}) "
+        f"VALUES ({placeholders}) "
+        f"ON DUPLICATE KEY UPDATE {update_expr}"
+    )
+
 
 def build_get_queue_query(table_name: str) -> str:
     query = f"""
@@ -39,7 +52,7 @@ def build_get_queue_query(table_name: str) -> str:
     return query
 
 QUEUE_QUERY = build_get_queue_query(QUEUED_TABLE)
-INSERT_QUERY = build_insert_query(ARTICLE_TABLE, COLUMN_NAMES)
+INSERT_QUERY = build_upsert_query(ARTICLE_TABLE, COLUMN_NAMES, UPSERT_COLUMNS)
 
 # ---------- Category Mapping ----------
 class Category(Enum):

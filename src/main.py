@@ -29,6 +29,9 @@ async def process_article(data):
 
     try:
         text = await asyncio.to_thread(parse_article_text_from_url, url)
+        if not text.strip():
+            print(f"[SKIP] Article ID: {article_id} - Empty content after parsing")
+            return None  # 본문이 없으면 처리하지 않음
 
         print(f"[PREPROCESS] Article ID: {article_id}")
         preprocessed = await asyncio.to_thread(PREPROCESSOR.process, text)
@@ -36,7 +39,11 @@ async def process_article(data):
 
         print(f"[PREDICT] Article ID: {article_id}")
         predict = await asyncio.to_thread(MODEL.predict, preprocessed)
-        content = predict.content if len(predict.keywords)>1 else "NULL"
+
+        content = predict.content
+
+        if not predict.keywords or len(predict.keywords) <= 1:
+            content = None
 
         values = (
             article_id,
@@ -46,7 +53,7 @@ async def process_article(data):
             data.get("thumbnail"),
             desc_processed,
             "\t".join(predict.keywords),
-            CATEGORY_DICT.get(predict.focusing, "NULL"),
+            CATEGORY_DICT.get(predict.focusing, None),
             content,
             predict.content_length,
             predict.lang,
@@ -59,7 +66,7 @@ async def process_article(data):
 
     except Exception as e:
         print(f"[ERROR] Article ID: {article_id} - {str(e)}")
-        return None  # 실패한 경우 무시
+        return None  # 에러 발생 시 처리 제외
 
 def lambda_handler(event, context):
     return asyncio.run(lambda_handler_async())
