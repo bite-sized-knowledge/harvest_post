@@ -45,8 +45,8 @@ def build_get_queue_query(table_name: str) -> str:
             updated_at
         FROM 
             {table_name}
-        LIMIT
-            {os.getenv('LIMIT', 10)} 
+        ORDER BY RAND()
+        LIMIT {os.getenv('LIMIT', 10)} 
         """
     return query
 
