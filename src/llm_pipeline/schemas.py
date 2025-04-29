@@ -2,6 +2,10 @@ from typing import List, Literal
 from pydantic import BaseModel, Field
 
 class TopicClassification(BaseModel):
+    content: str = Field(
+        description="Preprocessed Content of the text"
+    )
+
     focusing: Literal[
         'Frontend', 
         'Backend', 

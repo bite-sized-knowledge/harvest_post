@@ -1,94 +1,122 @@
-import os
-from db_conn import Connection
+import asyncio
 from http import HTTPStatus
+from db_conn import Connection
+from config import INSERT_QUERY, QUEUE_QUERY, CATEGORY_DICT, COLUMN_NAMES
 from response import HTTPResponse
 from llm_pipeline import LangChainModel
-from preprocessing \
-    import WoowahanProcessor, TossProcessor, MediumProcessor, KakaoProcessor, OliveYoungProcessor
+from preprocessing import BlogPostProcessor, parse_article_text_from_url
+from sqlalchemy.sql import text, bindparam
 
-# Pre-compile the INSERT query outside the handler
-ARTICLE_TABLE = os.getenv('ARTICLE_TABLE')
-COLUMN_NAMES = [
-    'article_id', 'blog_id', 'url', 'title', 'thumbnail',
-    'description', 'keywords', 'category_id', 'content', 'content_length',
-    'lang', 'published_at'
-]
-COLUMNS_STR = ", ".join(COLUMN_NAMES)
-PLACEHOLDERS = ", ".join(["%s" for _ in COLUMN_NAMES])
-INSERT_QUERY = f"INSERT IGNORE INTO {ARTICLE_TABLE} ({COLUMNS_STR}) VALUES ({PLACEHOLDERS})"
 
-# Define processors outside the handler
-PROCESSORS = {
-    1: WoowahanProcessor,
-    2: TossProcessor,
-    3: MediumProcessor,
-    4: KakaoProcessor,
-    5: OliveYoungProcessor
-}
+# Call Preprocessor
+PREPROCESSOR = BlogPostProcessor()
 
 # Call Model
 MODEL = LangChainModel()
 
-# Category Matching
+async def process_article(data):
+    """비동기로 개별 데이터를 처리하는 함수"""
+    article_id = data.get('article_id')
+    url = data.get('url')
+    blog_id = int(data.get("blog_id"))
+    description = data.get("description")
 
-CATEGORY_DICT = {
-    'Frontend': 1,
-    'Backend': 2,
-    'Mobile Engineering': 3,
-    'AI / ML': 4,
-    'Database': 5,
-    'Security / Network': 6,
-    'Design': 7,
-    'Product Manager': 8,
-    'DevOps / Infra': 9,
-    'Hardware / IoT': 10,
-    'QA / Test Engineer': 11,
-    'Culture': 12,
-    'etc' : 13
-}
+    published_at = data.get('published_at')
+    created_at = data.get('created_at')
+    updated_at = data.get('updated_at')
 
-def postprocess_by_blog_id(text, blog_id):
-    processor_class = PROCESSORS.get(blog_id)
-    if not processor_class:
-        raise ValueError(f"Unsupported blog_id: {blog_id}")
-    processor = processor_class(text, blog_id)
-    return processor.process()
+    print(f"[START] Processing article: {article_id}")
+
+    try:
+        text = await asyncio.to_thread(parse_article_text_from_url, url)
+        if not text.strip():
+            print(f"[SKIP] Article ID: {article_id} - Empty content after parsing")
+            return None  # 본문이 없으면 처리하지 않음
+
+        print(f"[PREPROCESS] Article ID: {article_id}")
+        preprocessed = await asyncio.to_thread(PREPROCESSOR.process, text)
+        desc_processed = await asyncio.to_thread(PREPROCESSOR.process, description)
+
+        print(f"[PREDICT] Article ID: {article_id}")
+        predict = await asyncio.to_thread(MODEL.predict, preprocessed)
+
+        content = predict.content
+
+        if not predict.keywords or len(predict.keywords) <= 1:
+            content = None
+
+        values = (
+            article_id,
+            blog_id,
+            url,
+            data.get("title"),
+            data.get("thumbnail"),
+            desc_processed,
+            "\t".join(predict.keywords),
+            CATEGORY_DICT.get(predict.focusing, None),
+            content,
+            predict.content_length,
+            predict.lang,
+            published_at,
+            created_at,
+            updated_at,
+        )
+
+        return values, article_id
+
+    except Exception as e:
+        print(f"[ERROR] Article ID: {article_id} - {str(e)}")
+        return None  # 에러 발생 시 처리 제외
 
 def lambda_handler(event, context):
+    return asyncio.run(lambda_handler_async())
+
+async def lambda_handler_async():
+    print("[LAMBDA START] Connecting to DB...")
     conn = Connection()
 
-    for data in event:
-        blog_id = int(data.get('blog_id'))
-        text = data.get('content')
+    print("[FETCH] Getting articles from queue...")
+    queued = conn.execute(QUEUE_QUERY)
+    print(f"[FETCH DONE] {len(queued)} articles fetched.")
 
-        try:
-            preprocessed = postprocess_by_blog_id(text, blog_id)
-            predict = MODEL.predict(preprocessed)
+    if queued is None or len(queued) == 0:
+        return HTTPResponse(HTTPStatus.OK, "Article Queue Empty")
 
-            values = (
-                data.get('article_id'),
-                blog_id,
-                data.get('url'),
-                data.get('title'),
-                data.get('thumbnail'),
-                data.get('description'),
-                '\t'.join(predict.keywords),
-                CATEGORY_DICT.get(predict.focusing, 'NULL'),
-                preprocessed,
-                predict.content_length,
-                predict.lang,
-                data.get('published_at')
+
+    try:
+        tasks = [process_article(row) for row in queued.to_dict(orient="records")]
+        results = await asyncio.gather(*tasks)
+
+        insert_rows = []
+        successful_ids = []
+
+        for result in results:
+            if result:
+                values, article_id = result
+                insert_rows.append(values)
+                successful_ids.append(article_id)
+
+        # ORM 기반 batch insert
+        if insert_rows:
+            print(f"[INSERT] Inserting {len(insert_rows)} records...")
+            insert_dicts = [
+                dict(zip(COLUMN_NAMES, row)) for row in insert_rows
+            ]
+            await asyncio.to_thread(conn.session_execute, INSERT_QUERY, insert_dicts)
+
+        # 성공한 article_id만 삭제
+        if successful_ids:
+            print(f"[DELETE] Removing {len(successful_ids)} articles from queue...")
+            delete_query = text("DELETE FROM article_queue WHERE article_id IN :ids").bindparams(
+                bindparam("ids", expanding=True)
             )
+            await asyncio.to_thread(conn.session_execute, delete_query, {"ids": successful_ids})
 
-            conn._raw_execute(INSERT_QUERY, values)
+    except Exception as e:
+        print(f"[FATAL ERROR] {str(e)}")
+        await asyncio.to_thread(conn.close)
+        return HTTPResponse(HTTPStatus.INTERNAL_SERVER_ERROR, str(e)).get_response()
 
-
-
-        except Exception as e:
-            conn.close()
-            response = HTTPResponse(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
-            return response.get_response()
-
-    conn.close()
-    response = HTTPResponse(HTTPStatus.CREATED) 
-    return response.get_response()
+    await asyncio.to_thread(conn.close)
+    print("[LAMBDA DONE] All tasks completed and DB connection closed.")
+    return HTTPResponse(HTTPStatus.CREATED).get_response()

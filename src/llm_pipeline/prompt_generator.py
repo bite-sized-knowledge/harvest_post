@@ -8,6 +8,7 @@ class PromptGenerator:
         self.parser = PydanticOutputParser(pydantic_object=TopicClassification)
         self.prompt_data = prompt_data
         self.question = self._build_question()
+        self.format_instructions = self.parser.get_format_instructions().replace("```json\n", "").replace("```", "")
 
         self.prompt = self._build_prompt_template()
         self.retry = self._build_retry_template()
@@ -15,6 +16,11 @@ class PromptGenerator:
 
     def _build_question(self):
         guidelines = self.prompt_data['guidelines']
+
+        content_section = "\n".join([
+            f"- {guidelines['content']['instruction']}",
+            f"- Exclude: {', '.join(guidelines['content']['exclude'])}"
+        ])
 
         focusing_section = "\n".join([
             f"- {guidelines['focusing']['instruction']}",
@@ -46,16 +52,19 @@ class PromptGenerator:
             You are a {self.prompt_data['role']}.
             {self.prompt_data['instruction']}
 
-            1. Focusing:
+            1. Content:
+            {content_section}
+
+            2. Focusing:
             {focusing_section}
 
-            2. Keywords:
+            3. Keywords:
             {keywords_section}
 
-            3. Content Length:
+            4. Content Length:
             {content_length_section}
 
-            4. Language:
+            5. Language:
             {language_section}
 
             Additional guidelines:
@@ -66,9 +75,9 @@ class PromptGenerator:
 
     def _build_prompt_template(self):
         return PromptTemplate(
-            template="{question}\n{format_instructions}\nContent:\n{content}",
+            template="Analyze the blog post below and return structured JSON.\n{question}\n{format_instructions}\nContent:\n{content}",
             input_variables=["question", "content"],
-            partial_variables={"format_instructions": self.parser.get_format_instructions()}
+            partial_variables={"format_instructions": self.format_instructions}
         )
 
     def _build_retry_template(self):
@@ -78,9 +87,9 @@ class PromptGenerator:
                 "The previous completion did not match the expected schema."
                 "You failed to extract exact focusing from the list of categories"
                 "Please return a valid output that conforms exactly to the provided format."
-                "{question}\n{format_instructions}\nContent:\n{content}"
+                "Analyze the blog post below and return structured JSON.\n{question}\n{format_instructions}\nContent:\n{content}"
             ),
-            partial_variables={"format_instructions": self.parser.get_format_instructions()}
+            partial_variables={"format_instructions": self.format_instructions}
         )
     
     def _build_restrict_template(self):
@@ -89,7 +98,7 @@ class PromptGenerator:
             template=(
                 "You failed to extract exact focusing from the list of categories AGAIN!"
                 "It is your LAST CHANCE to extract exact category from the content only in provided categories"
-                "{question}\n{format_instructions}\nContent:\n{content}"
+                "Analyze the blog post below and return structured JSON.\n{question}\n{format_instructions}\nContent:\n{content}"
             ),
-            partial_variables={"format_instructions": self.parser.get_format_instructions()}
+            partial_variables={"format_instructions": self.format_instructions}
         )

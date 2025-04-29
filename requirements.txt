@@ -2,8 +2,7 @@
 python-dotenv
 numpy
 pandas
-boto3
-paramiko
+sqlalchemy
 pymysql
 beautifulsoup4
 lxml
@@ -11,3 +10,4 @@ lxml
 langchain
 langchain-openai
 pydantic
+trafilatura
