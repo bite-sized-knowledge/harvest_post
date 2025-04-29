@@ -44,11 +44,10 @@ def build_get_queue_query(table_name: str) -> str:
             created_at,
             updated_at
         FROM 
-            {table_name}"""
-    if os.getenv('ENVIRONMENT') == 'dev':
-        LIMIT = os.getenv('LIMIT', 10)
-        return f"{query} LIMIT {LIMIT};" 
-
+            {table_name}
+        LIMIT
+            {os.getenv('LIMIT', 10)} 
+        """
     return query
 
 QUEUE_QUERY = build_get_queue_query(QUEUED_TABLE)
