@@ -11,3 +11,4 @@ langchain
 langchain-openai
 pydantic
 trafilatura
+fake-useragent

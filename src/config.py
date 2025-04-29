@@ -52,35 +52,3 @@ def build_get_queue_query(table_name: str) -> str:
 
 QUEUE_QUERY = build_get_queue_query(QUEUED_TABLE)
 INSERT_QUERY = build_upsert_query(ARTICLE_TABLE, COLUMN_NAMES, UPSERT_COLUMNS)
-
-# ---------- Category Mapping ----------
-class Category(Enum):
-    FRONTEND = 1
-    BACKEND = 2
-    MOBILE_ENGINEERING = 3
-    AI_ML = 4
-    DATABASE = 5
-    SECURITY_NETWORK = 6
-    DESIGN = 7
-    PRODUCT_MANAGER = 8
-    DEVOPS_INFRA = 9
-    HARDWARE_IOT = 10
-    QA_TEST_ENGINEER = 11
-    CULTURE = 12
-    ETC = 13
-
-CATEGORY_DICT = {
-    'Frontend': Category.FRONTEND.value,
-    'Backend': Category.BACKEND.value,
-    'Mobile Engineering': Category.MOBILE_ENGINEERING.value,
-    'AI / ML': Category.AI_ML.value,
-    'Database': Category.DATABASE.value,
-    'Security / Network': Category.SECURITY_NETWORK.value,
-    'Design': Category.DESIGN.value,
-    'Product Manager': Category.PRODUCT_MANAGER.value,
-    'DevOps / Infra': Category.DEVOPS_INFRA.value,
-    'Hardware / IoT': Category.HARDWARE_IOT.value,
-    'QA / Test Engineer': Category.QA_TEST_ENGINEER.value,
-    'Culture': Category.CULTURE.value,
-    'etc': Category.ETC.value
-}
