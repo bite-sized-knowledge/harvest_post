@@ -1,7 +1,7 @@
 import asyncio
 from http import HTTPStatus
 from db_conn import Connection
-from config import INSERT_QUERY, QUEUE_QUERY, CATEGORY_DICT, COLUMN_NAMES
+from config import INSERT_QUERY, QUEUE_QUERY, COLUMN_NAMES
 from response import HTTPResponse
 from llm_pipeline import LangChainModel
 from preprocessing import BlogPostProcessor, parse_article_text_from_url
@@ -42,6 +42,9 @@ async def process_article(data):
 
         content = predict.content
 
+        if len(content) <= 50:
+            predict.keywords = ""
+
         if not predict.keywords or len(predict.keywords) <= 1:
             content = None
 
@@ -53,7 +56,7 @@ async def process_article(data):
             data.get("thumbnail"),
             desc_processed,
             "\t".join(predict.keywords),
-            CATEGORY_DICT.get(predict.focusing, None),
+            predict.focusing.value,
             content,
             predict.content_length,
             predict.lang,

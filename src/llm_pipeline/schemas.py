@@ -1,36 +1,68 @@
-from typing import List, Literal
-from pydantic import BaseModel, Field
+from enum import Enum
+from typing import List
+from pydantic import BaseModel, Field, validator
+
+class Category(Enum):
+    FRONTEND = 1
+    BACKEND = 2
+    MOBILE_ENGINEERING = 3
+    AI_ML = 4
+    DATABASE = 5
+    SECURITY_NETWORK = 6
+    DESIGN = 7
+    PRODUCT_MANAGER = 8
+    DEVOPS_INFRA = 9
+    HARDWARE_IOT = 10
+    QA_TEST_ENGINEER = 11
+    CULTURE = 12
+    ETC = 13
+    NA = 14
+
 
 class TopicClassification(BaseModel):
     content: str = Field(
-        description="Preprocessed Content of the text"
+        description="Preprocessed content of the text"
     )
 
-    focusing: Literal[
-        'Frontend', 
-        'Backend', 
-        'Mobile Engineering', 
-        'AI / ML', 
-        'Database', 
-        'Security / Network', 
-        'Design', 
-        'Product Manager', 
-        'DevOps / Infra', 
-        'Hardware / IoT', 
-        'QA / Test Engineer', 
-        'Culture', 
-        'etc', 
-        'N/A'
-    ] = Field(
-        description="Most relative topic of the content"
+    focusing: Category = Field(
+        description="Most relevant topic category (Enum)"
     )
+
     keywords: List[str] = Field(
         max_length=3,
-        description="Three relative keywords extracted from the text considering the focusing topic"
+        description="Three relative keywords extracted from the text"
     )
+
     content_length: int = Field(
         description="Content length of the text excluding metadata"
     )
+
     lang: str = Field(
         description="Language of the text"
     )
+
+    @validator('focusing', pre=True)
+    def map_string_to_enum(cls, v):
+        mapping = {
+            'Frontend': Category.FRONTEND,
+            'Backend': Category.BACKEND,
+            'Mobile Engineering': Category.MOBILE_ENGINEERING,
+            'AI / ML': Category.AI_ML,
+            'Database': Category.DATABASE,
+            'Security / Network': Category.SECURITY_NETWORK,
+            'Design': Category.DESIGN,
+            'Product Manager': Category.PRODUCT_MANAGER,
+            'DevOps / Infra': Category.DEVOPS_INFRA,
+            'Hardware / IoT': Category.HARDWARE_IOT,
+            'QA / Test Engineer': Category.QA_TEST_ENGINEER,
+            'Culture': Category.CULTURE,
+            'etc': Category.ETC,
+            'N/A': Category.NA
+        }
+        if isinstance(v, Category):
+            return v
+        if isinstance(v, int):
+            return Category(v)
+        if v in mapping:
+            return mapping[v]
+        raise ValueError(f"Invalid focusing value: {v}")

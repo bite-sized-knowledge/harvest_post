@@ -1,6 +1,7 @@
 import requests
 from requests.adapters import HTTPAdapter
 from trafilatura import extract
+import certifi
 
 # 커스텀 세션 구성
 session = requests.Session()
@@ -10,7 +11,7 @@ session.mount('https://', adapter)
 
 def parse_article_text_from_url(url):
     try:
-        response = session.get(url, timeout=10)
+        response = session.get(url, timeout=10, verify=False)
         response.raise_for_status()
         downloaded = response.text
     except requests.RequestException as e:
