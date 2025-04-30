@@ -48,7 +48,7 @@ async def process_article(data):
             data.get("title"),
             data.get("thumbnail"),
             desc_processed,
-            "\t".join(predict.keywords),
+            "\t".join(predict.keywords) if predict.keywords else None
             predict.focusing.value,
             content,
             predict.content_length,
