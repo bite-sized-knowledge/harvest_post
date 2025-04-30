@@ -39,14 +39,7 @@ async def process_article(data):
 
         print(f"[PREDICT] Article ID: {article_id}")
         predict = await asyncio.to_thread(MODEL.predict, preprocessed)
-
         content = predict.content
-
-        if len(content) <= 50:
-            predict.keywords = ""
-
-        if not predict.keywords or len(predict.keywords) <= 1:
-            content = None
 
         values = (
             article_id,
