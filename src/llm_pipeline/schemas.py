@@ -1,6 +1,7 @@
+from pydantic import BaseModel, Field, validator, model_validator
 from enum import Enum
-from typing import List
-from pydantic import BaseModel, Field, validator
+from typing import List, Optional
+
 
 class Category(Enum):
     FRONTEND = 1
@@ -20,26 +21,11 @@ class Category(Enum):
 
 
 class TopicClassification(BaseModel):
-    content: str = Field(
-        description="Preprocessed content of the text"
-    )
-
-    focusing: Category = Field(
-        description="Most relevant topic category (Enum)"
-    )
-
-    keywords: List[str] = Field(
-        max_length=3,
-        description="Three relative keywords extracted from the text"
-    )
-
-    content_length: int = Field(
-        description="Content length of the text excluding metadata"
-    )
-
-    lang: str = Field(
-        description="Language of the text"
-    )
+    content: Optional[str] = Field(description="Preprocessed content of the text")
+    focusing: Category = Field(description="Most relevant topic category (Enum)")
+    keywords: Optional[List[str]] = Field(max_length=3, description="Three relative keywords extracted from the text")
+    content_length: int = Field(description="Content length of the text excluding metadata")
+    lang: str = Field(description="Language of the text")
 
     @validator('focusing', pre=True)
     def map_string_to_enum(cls, v):
@@ -66,3 +52,11 @@ class TopicClassification(BaseModel):
         if v in mapping:
             return mapping[v]
         raise ValueError(f"Invalid focusing value: {v}")
+
+    @model_validator(mode="after")
+    def enforce_rules(cls, values):
+        if values.content_length <= 50 or values.focusing == Category.NA:
+            values.content = None
+            values.keywords = None
+            values.focusing = Category.NA
+        return values
