@@ -19,6 +19,7 @@ async def process_article(data):
     article_id = data.get('article_id')
     url = data.get('url')
     blog_id = int(data.get("blog_id"))
+    title = data.get("title")
     description = data.get("description")
 
     published_at = data.get('published_at')
@@ -38,7 +39,8 @@ async def process_article(data):
         desc_processed = await asyncio.to_thread(PREPROCESSOR.process, description)
 
         print(f"[PREDICT] Article ID: {article_id}")
-        predict = await asyncio.to_thread(MODEL.predict, preprocessed)
+        query = f"Title : {title}, Description : {desc_processed}, Body Content : {preprocessed}"
+        predict = await asyncio.to_thread(MODEL.predict, query)
         content = predict.content
 
         values = (
