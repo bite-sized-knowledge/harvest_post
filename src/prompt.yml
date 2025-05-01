@@ -34,10 +34,8 @@ guidelines:
       - "QA / Test Engineer"
       - "Culture"
       - "etc"
-      - "N/A"
     fallback:
       - "If none of the above categories match the text with high confidence, classify it as 'etc'."
-      - "If there is no body content or the length is too short to categorize, classify it as 'N/A'."
 
   keywords:
     count: 3

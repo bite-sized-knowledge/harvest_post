@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator, model_validator
+from pydantic import BaseModel, Field, validator
 from enum import Enum
 from typing import List, Optional
 
@@ -17,7 +17,6 @@ class Category(Enum):
     QA_TEST_ENGINEER = 11
     CULTURE = 12
     ETC = 13
-    NA = 14
 
 
 class TopicClassification(BaseModel):
@@ -43,7 +42,6 @@ class TopicClassification(BaseModel):
             'QA / Test Engineer': Category.QA_TEST_ENGINEER,
             'Culture': Category.CULTURE,
             'etc': Category.ETC,
-            'N/A': Category.NA
         }
         if isinstance(v, Category):
             return v
@@ -52,11 +50,3 @@ class TopicClassification(BaseModel):
         if v in mapping:
             return mapping[v]
         raise ValueError(f"Invalid focusing value: {v}")
-
-    @model_validator(mode="after")
-    def enforce_rules(cls, values):
-        if values.content_length <= 50 or values.focusing == Category.NA:
-            values.content = None
-            values.keywords = None
-            values.focusing = Category.NA
-        return values
