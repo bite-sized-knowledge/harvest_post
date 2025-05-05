@@ -38,8 +38,7 @@ def parse_article_text_from_url(url):
         print(f"[ERROR] Failed to download URL {url}: {e}")
         return ""
 
-    if not response.encoding:
-        response.encoding = response.apparent_encoding
+    response.encoding = 'utf-8'
     downloaded = response.text
 
     text = extract(
