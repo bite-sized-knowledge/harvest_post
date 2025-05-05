@@ -78,7 +78,7 @@ async def lambda_handler_async():
     print(f"[FETCH DONE] {len(queued)} articles fetched.")
 
     if queued is None or len(queued) == 0:
-        return HTTPResponse(HTTPStatus.OK, "Article Queue Empty")
+        return HTTPResponse(HTTPStatus.OK, "Article Queue Empty").get_response()
 
 
     try:
