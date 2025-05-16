@@ -23,7 +23,7 @@ phases:
     commands:
       - echo Build started for commit $SHA
       - echo Building the Docker image...
-      - docker build -t $ECR_REPO:$SHA .
+      - docker build --platform linux/x86_64 -t $ECR_REPO:$SHA .
       - docker tag $ECR_REPO:$SHA $AWS_ACCOUNT_ID.dkr.ecr.$ECR_REGION.amazonaws.com/$ECR_REPO:$SHA
 
   post_build:
