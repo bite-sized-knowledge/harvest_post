@@ -70,9 +70,11 @@ def extract_html_via_requests(url: str, user_agent: str, timeout: int = 10) -> s
 
 def extract_html_via_selenium(url: str, user_agent: str) -> str:
     chrome_options = Options()
-    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--headless=chrome")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-software-rasterizer")
     chrome_options.add_argument(f"--user-agent={user_agent}")
     chrome_options.add_argument("--window-size=1280,800")
     chrome_options.binary_location = os.environ.get("CHROME_BIN", "/opt/chrome/chrome")
