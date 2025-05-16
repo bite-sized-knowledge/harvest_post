@@ -12,3 +12,4 @@ langchain-openai
 pydantic
 trafilatura
 fake-useragent
+selenium==4.14.0

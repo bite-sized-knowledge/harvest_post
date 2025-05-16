@@ -7,7 +7,7 @@
 ## Build
 
 ```bash
-docker build -t lambda-local .
+docker build --platform linux/x86_64 -t lambda-local .
 
 docker run -p 9000:8080 \
   --env-file .env \
