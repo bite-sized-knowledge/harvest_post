@@ -7,7 +7,6 @@ pymysql
 beautifulsoup4
 lxml
 lxml_html_clean
-chromedriver_autoinstaller
 
 langchain
 langchain-openai
