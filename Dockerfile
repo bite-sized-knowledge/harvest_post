@@ -1,6 +1,7 @@
 # AWS Lambda용 Python 3.11 베이스 이미지 사용
-FROM public.ecr.aws/lambda/python:3.11
+FROM public.ecr.aws/lambda/python:3.11 AS stage
 
+ENV CHROMIUM_VERSION=1002910
 # 필수 시스템 패키지 설치
 RUN yum install -y \
     unzip \
@@ -24,22 +25,20 @@ RUN yum install -y \
     xorg-x11-fonts-Type1 \
     xorg-x11-fonts-misc
 
-# Chrome 및 ChromeDriver 버전 설정
-ENV CHROME_VERSION=122.0.6261.128
+COPY install-browser.sh /tmp/
+RUN /usr/bin/bash /tmp/install-browser.sh
 
-# Chrome 및 ChromeDriver 다운로드 및 설치
-RUN curl -Lo "/tmp/chrome-linux64.zip" "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip" && \
-    curl -Lo "/tmp/chromedriver-linux64.zip" "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip" && \
-    unzip /tmp/chrome-linux64.zip -d /opt/ && \
-    unzip /tmp/chromedriver-linux64.zip -d /opt/ && \
-    rm /tmp/chrome-linux64.zip /tmp/chromedriver-linux64.zip && \
-    mv /opt/chrome-linux64 /opt/chrome && \
-    mv /opt/chromedriver-linux64/chromedriver /opt/chromedriver && \
-    chmod +x /opt/chrome/chrome /opt/chromedriver
+FROM public.ecr.aws/lambda/python:3.11 AS base
+
+COPY chrome-deps.txt /tmp/
+RUN yum install -y $(cat /tmp/chrome-deps.txt)
 
 # 환경 변수 설정
 ENV CHROME_BIN=/opt/chrome/chrome
 ENV CHROMEDRIVER=/opt/chromedriver
+
+COPY --from=stage /opt/chrome /opt/chrome
+COPY --from=stage /opt/chromedriver /opt/chromedriver
 
 # Python 패키지 설치
 COPY requirements.txt .

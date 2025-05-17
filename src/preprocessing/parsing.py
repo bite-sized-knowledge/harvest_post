@@ -84,7 +84,7 @@ def extract_html_via_selenium(url: str, user_agent: str) -> str:
 
     try:
         driver = webdriver.Chrome(service=service, options=chrome_options)
-        driver.set_page_load_timeout(30)
+        driver.set_page_load_timeout(5)
         driver.get(url)
         return driver.page_source
     except Exception as e:
