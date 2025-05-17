@@ -1,24 +1,5 @@
 # AWS Lambda용 Python 3.11 베이스 이미지 사용
-FROM public.ecr.aws/lambda/python:3.9 AS stage
-
-ENV CHROMIUM_VERSION=1002910
-# 필수 시스템 패키지 설치
-RUN yum install -y -q sudo unzip
-
-COPY install-browser.sh /tmp/
-RUN /usr/bin/bash /tmp/install-browser.sh
-
-FROM public.ecr.aws/lambda/python:3.9 AS base
-
-COPY chrome-deps.txt /tmp/
-RUN yum install -y $(cat /tmp/chrome-deps.txt)
-
-# 환경 변수 설정
-ENV CHROME_BIN=/opt/chrome/chrome
-ENV CHROMEDRIVER=/opt/chromedriver
-
-COPY --from=stage /opt/chrome /opt/chrome
-COPY --from=stage /opt/chromedriver /opt/chromedriver
+FROM umihico/aws-lambda-selenium-python:latest
 
 # Python 패키지 설치
 COPY requirements.txt .
