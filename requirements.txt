@@ -6,6 +6,7 @@ sqlalchemy
 pymysql
 beautifulsoup4
 lxml
+lxml_html_clean
 
 langchain
 langchain-openai
