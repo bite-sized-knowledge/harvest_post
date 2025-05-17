@@ -3,9 +3,7 @@ import re
 import requests
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
+from tempfile import mkdtemp
 from trafilatura import extract
 from fake_useragent import UserAgent
 
@@ -69,21 +67,30 @@ def extract_html_via_requests(url: str, user_agent: str, timeout: int = 10) -> s
     return ""
 
 def extract_html_via_selenium(url: str, user_agent: str) -> str:
-    chrome_options = Options()
-    chrome_options.add_argument("--headless=chrome")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--disable-software-rasterizer")
-    chrome_options.add_argument(f"--user-agent={user_agent}")
-    chrome_options.add_argument("--window-size=1280,800")
-    chrome_options.binary_location = os.environ.get("CHROME_BIN", "/opt/chrome/chrome")
+    from selenium import webdriver
+    from tempfile import mkdtemp
 
-    driver_path = os.environ.get("CHROMEDRIVER", "/opt/chromedriver")
-    service = Service(executable_path=driver_path)
+    options = webdriver.ChromeOptions()
+    service = webdriver.ChromeService("/opt/chromedriver")
+
+    # 명확하게 chrome 바이너리 위치 지정
+    options.binary_location = os.environ.get("CHROME_BIN", "/opt/chrome/chrome")
+    options.add_argument("--headless")
+    options.add_argument('--no-sandbox')
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1280x1696")
+    options.add_argument("--single-process")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-dev-tools")
+    options.add_argument("--no-zygote")
+    options.add_argument(f"--user-data-dir={mkdtemp()}")
+    options.add_argument(f"--data-path={mkdtemp()}")
+    options.add_argument(f"--disk-cache-dir={mkdtemp()}")
+    options.add_argument(f"--user-agent={user_agent}")
+
+    driver = webdriver.Chrome(options=options, service=service)
 
     try:
-        driver = webdriver.Chrome(service=service, options=chrome_options)
         driver.set_page_load_timeout(5)
         driver.get(url)
         return driver.page_source
