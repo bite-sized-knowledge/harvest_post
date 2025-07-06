@@ -80,7 +80,6 @@ async def lambda_handler_async():
     if queued is None or len(queued) == 0:
         return HTTPResponse(HTTPStatus.OK, "Article Queue Empty").get_response()
 
-
     try:
         tasks = [process_article(row) for row in queued.to_dict(orient="records")]
         results = await asyncio.gather(*tasks)
@@ -109,6 +108,8 @@ async def lambda_handler_async():
                 bindparam("ids", expanding=True)
             )
             await asyncio.to_thread(conn.session_execute, delete_query, {"ids": successful_ids})
+
+
 
     except Exception as e:
         print(f"[FATAL ERROR] {str(e)}")
