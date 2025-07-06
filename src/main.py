@@ -1,6 +1,9 @@
 import asyncio
+import os
 from http import HTTPStatus
 from db_conn import Connection
+from embedder import TextEmbeddings
+from qdrant_config import QdrantVectorStore
 from config import INSERT_QUERY, QUEUE_QUERY, COLUMN_NAMES
 from response import HTTPResponse
 from llm_pipeline import LangChainModel
@@ -80,7 +83,6 @@ async def lambda_handler_async():
     if queued is None or len(queued) == 0:
         return HTTPResponse(HTTPStatus.OK, "Article Queue Empty").get_response()
 
-
     try:
         tasks = [process_article(row) for row in queued.to_dict(orient="records")]
         results = await asyncio.gather(*tasks)
@@ -100,7 +102,41 @@ async def lambda_handler_async():
             insert_dicts = [
                 dict(zip(COLUMN_NAMES, row)) for row in insert_rows
             ]
-            await asyncio.to_thread(conn.session_execute, INSERT_QUERY, insert_dicts)
+
+
+            print(f"[AWS Bedrock & Qdrant] Process Starting...")
+            embedder = TextEmbeddings()
+            store = QdrantVectorStore(
+                collection_name="bite-vectordb",
+                vector_dim=int(os.getenv("VECTOR_DIM")),
+                host=os.getenv("QDRANT_HOST"),
+                port=os.getenv("QDRANT_PORT")
+            )
+
+            for row in insert_dicts:
+                try:
+                    print(f"[AWS Bedrock] Embedding {row["article_id"]}...")
+                    embedding = embedder(
+                        row["title"], 
+                        dimensions=int(os.getenv("VECTOR_DIM"))
+                    )
+
+                    print(f"[Qdrant] Storing {row["article_id"]} into Vector DB...")
+                    store.upsert_points([{
+                        "id" : row["article_id"],
+                        "vector" : embedding,
+                        "payload" : {
+                            "article_id" : row["article_id"],
+                            "category" : row["category_id"]
+                        }
+                    }])
+
+                except Exception as e:
+                    print(f"[AWS Bedrock ERROR] Article ID : {row['article_id']} - {e}")
+
+            # await asyncio.to_thread(conn.session_execute, INSERT_QUERY, insert_dicts)
+
+
 
         # 성공한 article_id만 삭제
         if successful_ids:
@@ -109,6 +145,8 @@ async def lambda_handler_async():
                 bindparam("ids", expanding=True)
             )
             await asyncio.to_thread(conn.session_execute, delete_query, {"ids": successful_ids})
+
+
 
     except Exception as e:
         print(f"[FATAL ERROR] {str(e)}")
