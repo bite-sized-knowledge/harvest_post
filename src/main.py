@@ -134,7 +134,7 @@ async def lambda_handler_async():
                 except Exception as e:
                     print(f"[AWS Bedrock ERROR] Article ID : {row['article_id']} - {e}")
 
-            # await asyncio.to_thread(conn.session_execute, INSERT_QUERY, insert_dicts)
+            await asyncio.to_thread(conn.session_execute, INSERT_QUERY, insert_dicts)
 
 
 
