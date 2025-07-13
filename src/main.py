@@ -43,7 +43,11 @@ async def process_article(data):
 
         print(f"[PREDICT] Article ID: {article_id}")
         query = f"Title : {title}, Description : {desc_processed}, Body Content : {preprocessed}"
-        predict = await asyncio.to_thread(MODEL.predict, query)
+        predict = await asyncio.to_thread(
+            MODEL.predict, # predict 함수 비동기
+            query, # predict에 들어갈 Query 문
+            False # verbose option : show prompt
+        )
         content = predict.content
 
         values = (

@@ -9,7 +9,7 @@ from .schemas import TopicClassification
 
 class LangChainModel:
     def __init__(self):
-        AWS_LLM_MODEL = "apac.amazon.nova-micro-v1:0"
+        AWS_LLM_MODEL = "apac.amazon.nova-lite-v1:0"
         OPENAI_LLM_MODEL = "gpt-4.1-nano-2025-04-14"
 
         # Load prompt config
@@ -19,22 +19,21 @@ class LangChainModel:
         self.prompt_generator = PromptGenerator(self.prompt_data)
 
         # LLM clients
-        self.model = ChatBedrockConverse(
+        self.model = ChatOpenAI(
+                model_name=OPENAI_LLM_MODEL,
+            temperature=0
+        )
+
+        self.back_up = ChatBedrockConverse(
             model_id=AWS_LLM_MODEL,
             region_name="ap-northeast-2",
             temperature=0,
-            top_p=0.95,
-            max_tokens=128_000
-        )
-        self.back_up = ChatOpenAI(
-            model_name=OPENAI_LLM_MODEL,
-            temperature=0
         )
 
     def _safe_parser(self):
         def _inner(msg):
             content = msg.content if hasattr(msg, "content") else msg
-            print("[DEBUG] Bedrock raw output:\n", content)
+            # print("[DEBUG] LLM raw output:\n", content)
             return self._try_parse(content)
         return RunnableLambda(_inner)
 
@@ -44,7 +43,7 @@ class LangChainModel:
             if not match:
                 raise ValueError("No JSON object found in text.")
             json_str = match.group()
-            print("[DEBUG] Extracted JSON string:\n", json_str)
+            # print("[DEBUG] Extracted JSON string:\n", json_str)
             return json.loads(json_str)
         except json.JSONDecodeError as je:
             print(f"[extract_json] JSON decode error: {je}")
@@ -73,8 +72,8 @@ class LangChainModel:
             print("=" * 50)
 
         chains = [
-            ("AWS Bedrock", self.prompt_generator.prompt | self.model | self._safe_parser()),
-            ("OpenAI", self.prompt_generator.retry | self.back_up | self._safe_parser()),
+            ("OpenAI", self.prompt_generator.prompt | self.model | self._safe_parser()),
+            ("AWS Bedrock", self.prompt_generator.retry | self.back_up | self._safe_parser()),
         ]
 
         for name, chain in chains:
