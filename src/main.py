@@ -56,7 +56,7 @@ async def process_article(data):
             "\t".join(predict.keywords) if predict.keywords else None,
             predict.focusing.value,
             content,
-            predict.content_length,
+            len(content),
             predict.lang,
             published_at,
             created_at,
