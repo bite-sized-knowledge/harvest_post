@@ -14,7 +14,6 @@ class PromptGenerator:
 
         self.prompt = self._build_prompt_template()
         self.retry = self._build_retry_template()
-        self.restrict = self._build_restrict_template()
 
     def _build_instruction_text(self) -> str:
         g = self.prompt_data["tasks"]
