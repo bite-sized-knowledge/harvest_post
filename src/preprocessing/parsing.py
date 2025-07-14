@@ -28,24 +28,51 @@ def generate_user_agent():
 
 def is_dynamic_page(html: str) -> bool:
     soup = BeautifulSoup(html, 'html.parser')
+    score = 0
 
-    # 1. 구조적 힌트
-    if not (soup.find('main') or soup.find('article') or soup.find(class_='content')):
-        return True
-
-    # 2. 자바스크립트 과도한 렌더링 감지
-    script_count = len(soup.find_all('script'))
-    text_len = len(re.sub(r'<[^>]+>', '', html))
-    if script_count > 5 and text_len < 300:
-        return True
-
-    # 3. SPA 프레임워크 감지
+    # 1. SPA 프레임워크 감지 (높은 가중치)
     dynamic_indicators = [
         "__NEXT_DATA__", "window.__INITIAL_STATE__", "data-reactroot",
         "id=\"app\"", "id=\"root\"", "ng-app", "vue", "window.__NUXT__",
-        "data-vue-meta", "data-server-rendered"
+        "data-vue-meta", "data-server-rendered", "ReactDOM" # ReactDOM 추가
     ]
-    return any(keyword in html for keyword in dynamic_indicators)
+    # BeautifulSoup 파싱 전에 원본 HTML에서 직접 검색하는 것이 효율적입니다.
+    if any(keyword in html for keyword in dynamic_indicators):
+        score += 3
+
+    # 2. 자바스크립트 기반 렌더링 지표
+    script_tags = soup.find_all('script')
+    script_count = len(script_tags)
+
+    # 2-1. 스크립트 과다 및 텍스트 콘텐츠 부족
+    # HTML에서 태그를 제거한 순수 텍스트 길이 (공백 제거 후)
+    clean_text = re.sub(r'<[^>]+>', '', html).strip()
+    text_len = len(clean_text)
+
+    # 스크립트가 많고 본문 텍스트가 매우 적으면 동적 페이지일 가능성이 높음
+    # 실제 콘텐츠가 스크립트를 통해 로드될 가능성
+    if script_count >= 5 and text_len < 100:
+        score += 2
+
+    # 2-2. 인라인 스크립트 또는 대량의 스크립트 콘텐츠
+    # 대량의 인라인 스크립트 또는 스크립트 내부에 많은 로직이 있을 경우
+    for script in script_tags:
+        if script.string and len(script.string) > 200: # 스크립트 내용이 긴 경우
+            score += 1
+            break # 하나만 있어도 점수 부여
+
+    # 3. 주요 콘텐츠 영역 부재 (보통 수준의 가중치)
+    # 'main' 또는 'article' 태그가 없거나, 'content'와 유사한 클래스를 가진 요소가 없는 경우
+    has_main_content_tag = soup.find('main') or soup.find('article')
+    has_common_content_class = soup.find(class_=re.compile(r'(content|body|wrapper)', re.IGNORECASE))
+
+    if not has_main_content_tag and not has_common_content_class and text_len < 300:
+        # 본문 태그도 없고, 일반적인 콘텐츠 클래스도 없으며, 텍스트도 적은 경우
+        score += 1
+
+
+    # 최종 점수 기반 판단
+    return score >= 3
 
 def extract_html_via_requests(url: str, user_agent: str, timeout: int = 10) -> str:
     headers = {
