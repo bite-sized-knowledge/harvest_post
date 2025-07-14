@@ -7,6 +7,11 @@ from tempfile import mkdtemp
 from trafilatura import extract
 from fake_useragent import UserAgent
 
+try:
+    UA = UserAgent()
+except Exception:
+    UA = None
+
 # 세션 구성 (커넥션 풀 포함)
 session = requests.Session()
 adapter = HTTPAdapter(pool_connections=10, pool_maxsize=10)
@@ -14,10 +19,12 @@ session.mount('http://', adapter)
 session.mount('https://', adapter)
 
 def generate_user_agent():
-    try:
-        return UserAgent().random
-    except Exception:
-        return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
+    if UA:
+        try:
+            return UA.random
+        except Exception:
+            pass
+    return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
 
 def is_dynamic_page(html: str) -> bool:
     soup = BeautifulSoup(html, 'html.parser')
