@@ -2,10 +2,14 @@ import os
 import re
 import requests
 from bs4 import BeautifulSoup
-from requests.adapters import HTTPAdapter
 from tempfile import mkdtemp
 from trafilatura import extract
 from fake_useragent import UserAgent
+from requests.adapters import HTTPAdapter
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.support.ui import WebDriverWait
+import backoff
 
 try:
     UA = UserAgent()
@@ -74,6 +78,8 @@ def is_dynamic_page(html: str) -> bool:
     # 최종 점수 기반 판단
     return score >= 3
 
+
+@backoff.on_exception(backoff.expo, requests.exceptions.RequestException, max_tries=3)
 def extract_html_via_requests(url: str, user_agent: str, timeout: int = 10) -> str:
     headers = {
         'User-Agent': user_agent,
@@ -82,75 +88,52 @@ def extract_html_via_requests(url: str, user_agent: str, timeout: int = 10) -> s
         'Connection': 'close'
     }
 
-    try:
-        response = session.get(url, headers=headers, timeout=timeout)
-        response.raise_for_status()
-        response.encoding = 'utf-8'
-        return response.text
-    except requests.exceptions.SSLError as e:
-        print(f"[SSL WARNING] Retrying with verify=False for {url}")
-        try:
-            response = session.get(url, headers=headers, timeout=timeout, verify=False)
-            response.raise_for_status()
-            response.encoding = 'utf-8'
-            return response.text
-        except Exception as ex:
-            print(f"[SSL BYPASS ERROR] {url}: {ex}")
-    except Exception as e:
-        print(f"[REQUEST ERROR] Failed to fetch {url}: {e}")
-    return ""
+    response = session.get(url, headers=headers, timeout=timeout)
+    response.raise_for_status()
+    response.encoding = 'utf-8'
+    return response.text
 
 def extract_html_via_selenium(url: str, user_agent: str) -> str:
-    from selenium import webdriver
-    from tempfile import mkdtemp
-
     options = webdriver.ChromeOptions()
-    service = webdriver.ChromeService("/opt/chromedriver")
-
-    # 명확하게 chrome 바이너리 위치 지정
     options.binary_location = os.environ.get("CHROME_BIN", "/opt/chrome/chrome")
-    options.add_argument("--headless")
-    options.add_argument('--no-sandbox')
-    options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1280x1696")
-    options.add_argument("--single-process")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-dev-tools")
-    options.add_argument("--no-zygote")
-    options.add_argument(f"--user-data-dir={mkdtemp()}")
-    options.add_argument(f"--data-path={mkdtemp()}")
-    options.add_argument(f"--disk-cache-dir={mkdtemp()}")
+    temp_dir = mkdtemp()
+    for opt in ["--headless", "--no-sandbox", "--disable-gpu",
+                "--disable-dev-shm-usage", "--disable-dev-tools", "--no-zygote"]:
+        options.add_argument(opt)
+    options.add_argument(f"--user-data-dir={temp_dir}")
     options.add_argument(f"--user-agent={user_agent}")
 
+    service = ChromeService("/opt/chromedriver")
     driver = webdriver.Chrome(options=options, service=service)
 
     try:
         driver.set_page_load_timeout(30)
         driver.get(url)
+        WebDriverWait(driver, 10).until(
+            lambda d: d.execute_script("return document.readyState") == "complete")
         return driver.page_source
     except Exception as e:
         print(f"[SELENIUM ERROR] Failed to fetch {url}: {e}")
     finally:
-        try:
-            driver.quit()
-        except:
-            pass
+        driver.quit()
+
     return ""
 
 def parse_article_text_from_url(url: str) -> str:
     user_agent = generate_user_agent()
-    print(f"[INFO] Fetching {url} with User-Agent")
+    print(f"[INFO] Fetching {url}")
 
-    html = extract_html_via_requests(url, user_agent)
-
-    if not html:
+    html = ""
+    try:
+        html = extract_html_via_requests(url, user_agent)
+    except Exception as e:
+        print(f"[REQUEST ERROR] {url}: {e}")
         return ""
 
-    if is_dynamic_page(html):
+    if is_dynamic_page(html, url):
         print(f"[INFO] Dynamic page detected: {url}")
         html = extract_html_via_selenium(url, user_agent)
         if not html:
-            print(f"[ERROR] Failed to extract dynamic content from {url}")
             return ""
 
     text = extract(
