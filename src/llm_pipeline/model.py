@@ -9,7 +9,7 @@ from .schemas import TopicClassification
 
 class LangChainModel:
     def __init__(self):
-        AWS_LLM_MODEL = "apac.amazon.nova-lite-v1:0"
+        AWS_LLM_MODEL = "apac.amazon.nova-micro-v1:0"
         OPENAI_LLM_MODEL = "gpt-4.1-nano-2025-04-14"
 
         # Load prompt config
