@@ -68,6 +68,8 @@ class BlogPostProcessor:
         text = re.sub(r'"', '\'', text)
         text = re.sub(r'[^\S\n]{2,}', ' ', text)  
         text = re.sub(r'([.,!?])\1+', r'\1', text)
+        text = re.split(r"--\d+share", text)[-1]
+        text = re.split('published in', text)[0]
 
         return text
 

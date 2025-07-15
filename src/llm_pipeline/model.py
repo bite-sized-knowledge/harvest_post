@@ -63,7 +63,7 @@ class LangChainModel:
                     print("Field error:", err)
             raise
 
-    def predict(self, text: str, show_prompt: bool = True) -> TopicClassification:
+    def predict(self, text: str, show_prompt: bool = False, show_output: bool = True) -> TopicClassification:
         input_data = {"content": text}
 
         if show_prompt:
@@ -79,7 +79,10 @@ class LangChainModel:
         for name, chain in chains:
             try:
                 print(f"[INFO] Trying {name} chain...")
-                return chain.invoke(input_data)
+                ret = chain.invoke(input_data)
+                if show_output:
+                    print(ret)
+                return ret
             except Exception as e:
                 print(f"[WARNING] {name} chain failed: {e}")
 
