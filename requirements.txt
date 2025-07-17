@@ -14,5 +14,6 @@ langchain-aws
 pydantic
 trafilatura
 fake-useragent
+backoff
 
 qdrant_client

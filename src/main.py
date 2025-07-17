@@ -46,7 +46,9 @@ async def process_article(data):
         predict = await asyncio.to_thread(
             MODEL.predict, # predict 함수 비동기
             query, # predict에 들어갈 Query 문
-            False # verbose option : show prompt
+            False, # verbose option : show prompt
+            False # verbose option : show llm output 
+
         )
         content = predict.content
 
@@ -148,7 +150,7 @@ async def lambda_handler_async():
             delete_query = text("DELETE FROM article_queue WHERE article_id IN :ids").bindparams(
                 bindparam("ids", expanding=True)
             )
-            await asyncio.to_thread(conn.session_execute, delete_query, {"ids": successful_ids})
+            # await asyncio.to_thread(conn.session_execute, delete_query, {"ids": successful_ids})
 
 
 
