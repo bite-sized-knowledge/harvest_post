@@ -66,7 +66,7 @@ def build_get_queue_query(table_name: str) -> str:
         FROM 
             {table_name}
         WHERE
-            article_id = 'saSUvKxGMiSuh19AhW2XpR5Tmg9'
+            article_id = 'pdyWOy1eDoGux5zgc8FPktSX3G4'
         """
     return query
 
