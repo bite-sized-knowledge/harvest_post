@@ -114,22 +114,19 @@ async def lambda_handler_async():
             store = QdrantVectorStore(
                 collection_name="bite-vectordb",
                 vector_dim=int(os.getenv("VECTOR_DIM")),
-                host=os.getenv("QDRANT_HOST"),
-                port=os.getenv("QDRANT_PORT")
             )
 
+            TASK = ["AWS Bedrock", "Qdrant"]
             for row in insert_dicts:
+                error_idx = 0
                 try:
-
                     print(f"[AWS Bedrock] Embedding {row["article_id"]}...")
-
-                    embedding = embedder.embed_article(
-                        title=row["title"],
-                        keywords=row["keywords"],
-                        content=row["content"],
+                    embedding = embedder(
+                        row["title"], 
                         dimensions=int(os.getenv("VECTOR_DIM"))
                     )
 
+                    error_idx += 1
                     print(f"[Qdrant] Storing {row["article_id"]} into Vector DB...")
                     store.upsert_points([{
                         "id" : row["article_id"],
@@ -141,9 +138,10 @@ async def lambda_handler_async():
                     }])
 
                 except Exception as e:
-                    print(f"[AWS Bedrock ERROR] Article ID : {row['article_id']} - {e}")
+                    print(f"[{TASK[error_idx]} Error] Article ID : {row['article_id']} - {e}")
 
             await asyncio.to_thread(conn.session_execute, INSERT_QUERY, insert_dicts)
+
 
 
         # 성공한 article_id만 삭제
@@ -152,7 +150,7 @@ async def lambda_handler_async():
             delete_query = text("DELETE FROM article_queue WHERE article_id IN :ids").bindparams(
                 bindparam("ids", expanding=True)
             )
-            # await asyncio.to_thread(conn.session_execute, delete_query, {"ids": successful_ids})
+            await asyncio.to_thread(conn.session_execute, delete_query, {"ids": successful_ids})
 
 
 

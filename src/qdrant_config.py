@@ -10,21 +10,24 @@ from qdrant_client.models import (
 from typing import List, Dict, Optional, Union
 import numpy as np
 import uuid
+import os
 
 class QdrantVectorStore:
     def __init__(
         self,
         collection_name: str,
         vector_dim: int,
-        host: str,
-        port: int,
         distance: Distance = Distance.COSINE
     ):
         self.collection_name = collection_name
         self.vector_dim = vector_dim
+
+        url = f"{os.getenv("QDRANT_HOST", "")}:{os.getenv("QDRANT_PORT", "")}"
+        if os.getenv("ENVIRONMENT", "prod") == "prod":
+            url = os.getenv("QDRANT_ENDPOINT")
+
         self.client = QdrantClient(
-            host=host,
-            port=port,
+            url=url,
             prefer_grpc=False
         )
 
