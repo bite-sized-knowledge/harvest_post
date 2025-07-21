@@ -121,8 +121,11 @@ async def lambda_handler_async():
                 error_idx = 0
                 try:
                     print(f"[AWS Bedrock] Embedding {row["article_id"]}...")
-                    embedding = embedder(
-                        row["title"], 
+
+                    embedding = embedder.embed_article(
+                        title=row["title"],
+                        keywords=row["keywords"],
+                        content=row["content"],
                         dimensions=int(os.getenv("VECTOR_DIM"))
                     )
 
