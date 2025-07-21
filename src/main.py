@@ -109,7 +109,6 @@ async def lambda_handler_async():
                 dict(zip(COLUMN_NAMES, row)) for row in insert_rows
             ]
 
-
             print(f"[AWS Bedrock & Qdrant] Process Starting...")
             embedder = TextEmbeddings()
             store = QdrantVectorStore(
@@ -121,9 +120,13 @@ async def lambda_handler_async():
 
             for row in insert_dicts:
                 try:
+
                     print(f"[AWS Bedrock] Embedding {row["article_id"]}...")
-                    embedding = embedder(
-                        row["title"], 
+
+                    embedding = embedder.embed_article(
+                        title=row["title"],
+                        keywords=row["keywords"],
+                        content=row["content"],
                         dimensions=int(os.getenv("VECTOR_DIM"))
                     )
 
@@ -141,7 +144,6 @@ async def lambda_handler_async():
                     print(f"[AWS Bedrock ERROR] Article ID : {row['article_id']} - {e}")
 
             await asyncio.to_thread(conn.session_execute, INSERT_QUERY, insert_dicts)
-
 
 
         # 성공한 article_id만 삭제
