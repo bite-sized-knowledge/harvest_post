@@ -50,6 +50,24 @@ def build_get_queue_query(table_name: str) -> str:
         ORDER BY RAND()
         LIMIT {os.getenv('LIMIT', 10)} 
         """
+
+    # if os.getenv('ENVIRONMENT') == "dev":
+    #     query = f"""
+    #     SELECT
+    #         article_id,
+    #         blog_id,
+    #         url,
+    #         title,
+    #         thumbnail,
+    #         description,
+    #         published_at,
+    #         created_at,
+    #         updated_at
+    #     FROM 
+    #         {table_name}
+    #     WHERE
+    #         article_id = 'pdyWOy1eDoGux5zgc8FPktSX3G4'
+    #     """
     return query
 
 QUEUE_QUERY = build_get_queue_query(QUEUED_TABLE)

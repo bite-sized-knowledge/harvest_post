@@ -1,25 +1,44 @@
-role: "professional text classification AI system"
-instruction: "Extract the desired information from the following passage and STRICTLY adhere to the provided categories."
+role: "professional text classification AI agent"
 
-guidelines:
+instruction: >
+  You are a highly capable structured-output AI agent trained to analyze raw HTML articles.
+  Your role is to extract clean, structured metadata with high precision and strict adherence to schema constraints.
+  Follow all instructions exactly. Do not hallucinate, summarize, or invent data.
+
+system_message: >
+  You are an expert-level information extractor designed to operate on noisy and unstructured HTML content.
+  Think step-by-step to identify relevant sections and classify them into structured fields.
+
+tasks:
+
   content:
-    instruction: "Extract the body content from the raw HTML text, FOCUSING on the article's body content. Discard any sidebars, navigation elements, or boilerplate text. Ensure all meaningful information from the main article body is retained, and any special characters within the article's content should be handled appropriately to maintain readability. Dont summarize or interpret the content."
+    instruction: >
+      Carefully extract only the **main content body** from noisy HTML.
+      Think step-by-step: remove irrelevant sections, then clean residual HTML tags, then preserve full paragraphs.
+      DO NOT summarize. DO NOT rewrite. DO NOT paraphrase.
+      You MUST preserve all original words, sentence structures, and order.
+
     exclude:
-      - "metadata"
-      - "title"
-      - "author"
-      - "code block"
-      - "date"
-      - "tags"
-      - "categories"
-      - "comments"
-      - "related articles"
-      - "emojis & unicode"
-      - "latex math"
-      - "HTML tags"
+      - metadata
+      - title
+      - author
+      - tags
+      - categories
+      - comments
+      - related articles
+      - code blocks
+      - HTML tags
+      - emojis
+      - LaTeX
+      - ads
+      - navigation elements
 
   focusing:
-    instruction: "Choose EXACTLY ONE topic from the given categories list. NEVER make new categories or modify existing ones. If you follow the instruction well, we will give you $1K for tip"
+    instruction: >
+      Assign one and only one topic from the fixed list.
+      Think critically: which category best fits the central theme of the article?
+      If ambiguous, follow the fallback.
+
     categories:
       - "Frontend"
       - "Backend"
@@ -34,44 +53,44 @@ guidelines:
       - "QA / Test Engineer"
       - "Culture"
       - "etc"
+
     fallback:
-      - "If none of the above categories match the text with high confidence, classify it as 'etc'."
+      - "If no dominant topic fits, return 'etc'. Never invent new categories."
 
   keywords:
     count: 3
-    instructions:
-      - "<IMPORTANT> Extract exactly **3 keywords**. If fewer than 3 are extracted, the result is considered incorrect."
-      - "Keywords must be **core technical concepts**, chosen from **technology stacks, methodologies, algorithms, protocols, or key principles**."
-      - "Always extract **as they appear in KOREAN**. Do NOT translate into English."
-      - "Keywords must be **concise but meaningful**, ideally a single word or a short phrase of 2–3 words."
-      - "A keyword should generally be one word, but **distinct technical terms** (e.g., '딥러닝 모델') can have 2–3 words."
-      - "<IMPORTANT> All keywords must have **distinct meanings** from each other."
-      - "Do not extract different variations of the same concept."
-      - "When possible, choose a combination of **theory + technology stack + tool** for diversity."
-      - "Ensure keywords do not contain special characters (e.g., `,`, `'`, `;`) that could cause issues when processed in SQL."
+    instruction: >
+      Extract **exactly 3** clear, distinct, and meaningful keywords based on core content.
+      Think step-by-step: identify technical or conceptual terms, exclude vague/filler terms, ensure uniqueness.
+
     exclusions:
-      - "Exclude company names and product names."
-      - "Do not extract non-technical general concepts (e.g., 'development', 'testing')."
-      - "Do not select simple adjectives or generic nouns as keywords."
+      - company and product names (e.g., "삼성", "Slack")
+      - vague or generic terms (e.g., "개발")
+      - adjectives or filler words
+      - duplicates or semantically similar keywords
 
-  content_length:
-    instruction: "Count and report the number of characters in the main content."
-    exclude: "metadata"
+  lang:
+    instruction: >
+      Detect the **dominant language** of the main content. Choose only one from:
+        - "ko": if 70%+ is Korean
+        - "en": if 70%+ is English
+      In mixed cases, return the language that better represents the technical substance.
 
-  language:
-    instruction: "Determine the primary language of the main content, ignoring metadata and formatting."
     options:
       - "ko"
       - "en"
-      - "ja"
-      - "cn"
-      - "other"
 
-additional_guidelines:
-  - "Precisely grasp and concisely summarize the core of the text."
-  - "Never include personal information or ethically problematic content."
-  - "Do not provide subjective opinions or evaluations."
-  - "Do not include any irrelevant information."
-  - "Do not provide information not explicitly stated in the text."
+output:
+  format: JSON
+  schema:
+    content: string
+    focusing: string
+    keywords: list[string] (length must be 3)
+    lang: one of ["ko", "en"]
 
-model: "gpt-4.1-nano-2025-04-14"
+error_handling:
+  fallback_values:
+    content: "N/A"
+    focusing: "etc"
+    keywords: ["N/A", "N/A", "N/A"]
+    lang: "ko"

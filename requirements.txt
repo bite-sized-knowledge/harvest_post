@@ -10,6 +10,10 @@ lxml_html_clean
 
 langchain
 langchain-openai
+langchain-aws
 pydantic
 trafilatura
 fake-useragent
+backoff
+
+qdrant_client

@@ -1,104 +1,69 @@
-import textwrap
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from .schemas import TopicClassification
 
+TEMPLATE = "{system_message}\n\n{instruction}\n\nContent:\n{content}"
+
 class PromptGenerator:
-    def __init__(self, prompt_data):
-        self.parser = PydanticOutputParser(pydantic_object=TopicClassification)
+    def __init__(self, prompt_data: dict):
         self.prompt_data = prompt_data
-        self.question = self._build_question()
-        self.format_instructions = self.parser.get_format_instructions().replace("```json\n", "").replace("```", "")
+        self.parser = PydanticOutputParser(pydantic_object=TopicClassification)
+        self.format_instructions = self.parser.get_format_instructions().replace("```json", "").replace("```", "")
+        self.instruction_text = self._build_instruction_text()
+        self.system_message = prompt_data.get("system_message", "")
 
         self.prompt = self._build_prompt_template()
         self.retry = self._build_retry_template()
-        self.restrict = self._build_restrict_template()
 
-    def _build_question(self):
-        guidelines = self.prompt_data['guidelines']
-
-        content_section = "\n".join([
-            f"- {guidelines['content']['instruction']}",
-            f"- Exclude: {', '.join(guidelines['content']['exclude'])}"
+    def _build_instruction_text(self) -> str:
+        g = self.prompt_data["tasks"]
+        return "\n".join([
+            "Your task is to extract structured information from a noisy HTML article.",
+            "Strictly follow the schema and instructions. Think step-by-step and do not hallucinate.",
+            "",
+            "1. Content Extraction:",
+            f"- {g['content']['instruction']}",
+            f"- Exclude: {', '.join(g['content']['exclude'])}",
+            "",
+            "2. Topic Classification:",
+            f"- {g['focusing']['instruction']}",
+            f"- Categories: {' | '.join(g['focusing']['categories'])}",
+            f"- Fallback: {g['focusing']['fallback'][0]}",
+            "",
+            "3. Keywords:",
+            f"- {g['keywords']['instruction']}",
+            f"- Exclude: {', '.join(g['keywords']['exclusions'])}",
+            "",
+            "4. Language Detection:",
+            f"- {g['lang']['instruction']}",
+            f"- Options: {', '.join(g['lang']['options'])}",
+            "",
+            "Respond in strict JSON format matching this schema:",
+            self.format_instructions
         ])
 
-        focusing_section = "\n".join([
-            f"- {guidelines['focusing']['instruction']}",
-            f"- Categories(MUST BE ONE OF THESE): {' |  '.join(guidelines['focusing']['categories'])}",
-            f"- Fallback Rules: {', '.join(guidelines['focusing']['fallback'])}"
-        ])
-
-        keywords_section = "\n".join([
-            f"- Extract exactly {guidelines['keywords']['count']} keywords that best represent the main content.",
-            *[f"- {inst}" for inst in guidelines['keywords']['instructions']],
-            f"- Exclusions: {', '.join(guidelines['keywords']['exclusions'])}"
-        ])
-
-        content_length_section = "\n".join([
-            f"- {guidelines['content_length']['instruction']}",
-            f"- Exclude: {guidelines['content_length']['exclude']}"
-        ])
-
-        language_section = "\n".join([
-            f"- {guidelines['language']['instruction']}",
-            f"- Supported languages: {', '.join(guidelines['language']['options'])}"
-        ])
-
-        additional_guidelines_section = "\n".join(
-            f"- {guideline}" for guideline in self.prompt_data['additional_guidelines']
-        )
-
-        question = textwrap.dedent(f"""
-            You are a {self.prompt_data['role']}.
-            {self.prompt_data['instruction']}
-
-            1. Content:
-            {content_section}
-
-            2. Focusing:
-            {focusing_section}
-
-            3. Keywords:
-            {keywords_section}
-
-            4. Content Length:
-            {content_length_section}
-
-            5. Language:
-            {language_section}
-
-            Additional guidelines:
-            {additional_guidelines_section}
-        """)
-
-        return question.strip()  # Remove unnecessary leading/trailing spaces
-
-    def _build_prompt_template(self):
+    def _make_template(self, instruction_prefix: str = "") -> PromptTemplate:
+        full_instruction = f"{instruction_prefix.strip()}\n\n{self.instruction_text}" if instruction_prefix else self.instruction_text
         return PromptTemplate(
-            template="Analyze the blog post below and return structured JSON.\n{question}\n{format_instructions}\nContent:\n{content}",
-            input_variables=["question", "content"],
-            partial_variables={"format_instructions": self.format_instructions}
+            input_variables=["content"],
+            template=TEMPLATE,
+            partial_variables={
+                "instruction": full_instruction,
+                "system_message": self.system_message
+            }
         )
 
-    def _build_retry_template(self):
-        return PromptTemplate(
-            input_variables=["question", "content"],
-            template=(
-                "The previous completion did not match the expected schema."
-                "You failed to extract exact focusing from the list of categories"
-                "Please return a valid output that conforms exactly to the provided format."
-                "Analyze the blog post below and return structured JSON.\n{question}\n{format_instructions}\nContent:\n{content}"
-            ),
-            partial_variables={"format_instructions": self.format_instructions}
-        )
-    
-    def _build_restrict_template(self):
-        return PromptTemplate(
-            input_variables=["question", "content"],
-            template=(
-                "You failed to extract exact focusing from the list of categories AGAIN!"
-                "It is your LAST CHANCE to extract exact category from the content only in provided categories"
-                "Analyze the blog post below and return structured JSON.\n{question}\n{format_instructions}\nContent:\n{content}"
-            ),
-            partial_variables={"format_instructions": self.format_instructions}
-        )
+    def _build_prompt_template(self) -> PromptTemplate:
+        return self._make_template()
+
+    def _build_retry_template(self) -> PromptTemplate:
+        return self._make_template("Previous output was invalid. Retry using the correct JSON schema and field constraints.")
+
+    def preview_prompt(self, content: str, level: str = "main") -> str:
+        template_map = {
+            "main": self.prompt,
+            "retry": self.retry
+        }
+        if level not in template_map:
+            raise ValueError("level must be one of: 'main', 'retry'")
+        return template_map[level].format_prompt(content=content).text

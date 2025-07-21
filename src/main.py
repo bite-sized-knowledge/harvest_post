@@ -1,6 +1,9 @@
 import asyncio
+import os
 from http import HTTPStatus
 from db_conn import Connection
+from embedder import TextEmbeddings
+from qdrant_config import QdrantVectorStore
 from config import INSERT_QUERY, QUEUE_QUERY, COLUMN_NAMES
 from response import HTTPResponse
 from llm_pipeline import LangChainModel
@@ -40,7 +43,13 @@ async def process_article(data):
 
         print(f"[PREDICT] Article ID: {article_id}")
         query = f"Title : {title}, Description : {desc_processed}, Body Content : {preprocessed}"
-        predict = await asyncio.to_thread(MODEL.predict, query)
+        predict = await asyncio.to_thread(
+            MODEL.predict, # predict 함수 비동기
+            query, # predict에 들어갈 Query 문
+            False, # verbose option : show prompt
+            False # verbose option : show llm output 
+
+        )
         content = predict.content
 
         values = (
@@ -53,7 +62,7 @@ async def process_article(data):
             "\t".join(predict.keywords) if predict.keywords else None,
             predict.focusing.value,
             content,
-            predict.content_length,
+            len(content),
             predict.lang,
             published_at,
             created_at,
@@ -80,7 +89,6 @@ async def lambda_handler_async():
     if queued is None or len(queued) == 0:
         return HTTPResponse(HTTPStatus.OK, "Article Queue Empty").get_response()
 
-
     try:
         tasks = [process_article(row) for row in queued.to_dict(orient="records")]
         results = await asyncio.gather(*tasks)
@@ -100,7 +108,41 @@ async def lambda_handler_async():
             insert_dicts = [
                 dict(zip(COLUMN_NAMES, row)) for row in insert_rows
             ]
+
+            print(f"[AWS Bedrock & Qdrant] Process Starting...")
+            embedder = TextEmbeddings()
+            store = QdrantVectorStore(
+                collection_name="bite-vectordb",
+                vector_dim=int(os.getenv("VECTOR_DIM")),
+            )
+
+            TASK = ["AWS Bedrock", "Qdrant"]
+            for row in insert_dicts:
+                error_idx = 0
+                try:
+                    print(f"[AWS Bedrock] Embedding {row["article_id"]}...")
+                    embedding = embedder(
+                        row["title"], 
+                        dimensions=int(os.getenv("VECTOR_DIM"))
+                    )
+
+                    error_idx += 1
+                    print(f"[Qdrant] Storing {row["article_id"]} into Vector DB...")
+                    store.upsert_points([{
+                        "id" : row["article_id"],
+                        "vector" : embedding,
+                        "payload" : {
+                            "article_id" : row["article_id"],
+                            "category" : row["category_id"]
+                        }
+                    }])
+
+                except Exception as e:
+                    print(f"[{TASK[error_idx]} Error] Article ID : {row['article_id']} - {e}")
+
             await asyncio.to_thread(conn.session_execute, INSERT_QUERY, insert_dicts)
+
+
 
         # 성공한 article_id만 삭제
         if successful_ids:
@@ -109,6 +151,8 @@ async def lambda_handler_async():
                 bindparam("ids", expanding=True)
             )
             await asyncio.to_thread(conn.session_execute, delete_query, {"ids": successful_ids})
+
+
 
     except Exception as e:
         print(f"[FATAL ERROR] {str(e)}")
