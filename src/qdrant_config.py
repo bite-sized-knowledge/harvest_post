@@ -28,6 +28,7 @@ class QdrantVectorStore:
 
         self.client = QdrantClient(
             url=url,
+            api_key=os.getenv("QDRANT_API", None),
             prefer_grpc=False
         )
 
