@@ -44,7 +44,7 @@ class TextEmbeddings:
             resp_body = json.loads(response["body"].read())
             return resp_body["embedding"]
         except Exception as e:
-            logger.error(f"[TitanEmbedding] Failed to embed: {e}")
+            print(f"[TitanEmbedding] Failed to embed: {e}")
             raise
 
     async def embed_text(self, text: str, dimensions: int, normalize: bool = True) -> List[float]:
