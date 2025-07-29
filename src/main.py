@@ -122,8 +122,9 @@ async def lambda_handler_async():
                 try:
                     print(f"[AWS Bedrock] Embedding {row["article_id"]}...")
 
-                    embedding = embedder.embed_article(
+                    embedding = await embedder(
                         title=row["title"],
+                        description=row.get("description", ""),
                         keywords=row["keywords"],
                         content=row["content"],
                         dimensions=int(os.getenv("VECTOR_DIM"))
@@ -142,6 +143,7 @@ async def lambda_handler_async():
 
                 except Exception as e:
                     print(f"[{TASK[error_idx]} Error] Article ID : {row['article_id']} - {e}")
+                    return None
 
             await asyncio.to_thread(conn.session_execute, INSERT_QUERY, insert_dicts)
 

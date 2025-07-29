@@ -1,92 +1,87 @@
+import os
 import json
 import boto3
-import os
+import asyncio
+from typing import List
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from numpy.linalg import norm
 
 class TextEmbeddings:
     accept = "application/json"
     content_type = "application/json"
+    separator = "\n\n###\n\n"  # 안정적인 구조화 구분자
 
-    def __init__(self,
-                 model_id: str = "amazon.titan-embed-text-v2:0",
-                 region: str = "ap-northeast-2"):
-        self.bedrock = boto3.client(
-            service_name="bedrock-runtime",
-            region_name=region
-        )
+    def __init__(
+        self,
+        model_id: str = "amazon.titan-embed-text-v2:0",
+        region: str = "ap-northeast-2",
+        chunk_size: int = None,
+        chunk_overlap: int = 200
+    ):
+        self.bedrock = boto3.client("bedrock-runtime", region_name=region)
         self.model_id = model_id
+        self.chunk_size = chunk_size or int(os.getenv("CHUNK_SIZE", 5000))
+        self.chunk_overlap = chunk_overlap
+        self.chunker = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            separators=["\n\n", "\n", ".", " ", ""]
+        )
 
-
-    def _embed_once(self, text: str, dimensions: int, normalize: bool):
-
-        """
-        Returns Titan Embeddings
-        Args:
-            text (str): text to embed
-            dimensions (int): Number of output dimensions.
-            normalize (bool): Whether to return the normalized embedding or not.
-        Return:
-            List[float]: Embedding
-            
-        """
-
+    def _embed_once(self, text: str, dimensions: int, normalize: bool) -> List[float]:
         body = json.dumps({
             "inputText": text,
             "dimensions": dimensions,
             "normalize": normalize
         })
-        response = self.bedrock.invoke_model(
-            body=body,
-            modelId=self.model_id,
-            accept=self.accept,
-            contentType=self.content_type
-        )
-        resp_body = json.loads(response["body"].read())
-        return resp_body["embedding"]
+        try:
+            response = self.bedrock.invoke_model(
+                body=body,
+                modelId=self.model_id,
+                accept=self.accept,
+                contentType=self.content_type
+            )
+            resp_body = json.loads(response["body"].read())
+            return resp_body["embedding"]
+        except Exception as e:
+            print(f"[TitanEmbedding] Failed to embed: {e}")
+            raise
 
-    def __call__(self, text: str, dimensions: int, normalize: bool = True):
-        """
-        길이 6 000자를 초과하면 청크별 임베딩 후 평균을 반환
-        """
-        
-        CHUNK_SIZE = int(os.getenv("CHUNK_SIZE"))
+    async def embed_text(self, text: str, dimensions: int, normalize: bool = True) -> List[float]:
+        chunks = self.chunker.split_text(text)
 
-        if len(text) <= CHUNK_SIZE:
-            return self._embed_once(text, dimensions, normalize)
+        if len(chunks) == 1:
+            return await asyncio.to_thread(self._embed_once, text, dimensions, normalize)
 
-        # 1) 청크 분할
-        chunks = [text[i:i + CHUNK_SIZE] for i in range(0, len(text), CHUNK_SIZE)]
-
-        # 2) 각 청크 임베딩
-        embeddings = [
-            self._embed_once(chunk, dimensions, normalize)
+        tasks = [
+            asyncio.to_thread(self._embed_once, chunk, dimensions, False)
             for chunk in chunks
         ]
+        embeddings = await asyncio.gather(*tasks)
 
-        # 3) element-wise 평균
-        num_chunks = len(embeddings)
-        avg_embedding = [
-            sum(values) / num_chunks               # values = (e1[i], e2[i], …)
+        avg = [
+            sum(values) / len(embeddings)
             for values in zip(*embeddings)
         ]
-        return avg_embedding
+        if normalize:
+            l2 = norm(avg)
+            avg = [v / l2 for v in avg]
 
-    def embed_article(
-        self,
-        title: str,
-        keywords: str,
-        content: str,
-        dimensions: int,
-        normalize: bool = True
-    ):
-    
-        # 1) 필드별 임베딩
-        emb_title    = self.__call__(title,    dimensions, normalize)
-        emb_keywords = self.__call__(keywords, dimensions, normalize)
-        emb_content  = self.__call__(content,  dimensions, normalize)
+        return avg
 
-        # 2) element-wise 평균
-        avg_embedding = [
-            (t + k + c) / 3
-            for t, k, c in zip(emb_title, emb_keywords, emb_content)
-        ]
-        return avg_embedding
+    async def __call__(self,
+                       title: str,
+                       description: str,
+                       keywords: str,
+                       content: str,
+                       dimensions: int,
+                       normalize: bool = True) -> List[float]:
+
+        merged = (
+            f"Title: {title}{self.separator}"
+            f"Description: {description}{self.separator}"
+            f"Keywords: {keywords}{self.separator}"
+            f"Content: {content}"
+        )
+
+        return await self.embed_text(merged, dimensions, normalize)
