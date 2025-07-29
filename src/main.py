@@ -143,6 +143,7 @@ async def lambda_handler_async():
 
                 except Exception as e:
                     print(f"[{TASK[error_idx]} Error] Article ID : {row['article_id']} - {e}")
+                    return None
 
             await asyncio.to_thread(conn.session_execute, INSERT_QUERY, insert_dicts)
 
