@@ -86,4 +86,5 @@ class LangChainModel:
             except Exception as e:
                 print(f"[WARNING] {name} chain failed: {e}")
 
-        raise RuntimeError("All chains failed")
+        print("[ERROR] All LLM Chains Failed")
+        return None
