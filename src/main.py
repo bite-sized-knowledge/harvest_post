@@ -48,8 +48,11 @@ async def process_article(data):
             query, # predict에 들어갈 Query 문
             False, # verbose option : show prompt
             False # verbose option : show llm output 
-
         )
+
+        if predict is None:
+            return None
+
         content = predict.content
 
         values = (
@@ -120,7 +123,7 @@ async def lambda_handler_async():
             for row in insert_dicts:
                 error_idx = 0
                 try:
-                    print(f"[AWS Bedrock] Embedding {row["article_id"]}...")
+                    print(f"[AWS Bedrock] Embedding {row['article_id']}...")
 
                     embedding = await embedder(
                         title=row["title"],
@@ -131,7 +134,7 @@ async def lambda_handler_async():
                     )
 
                     error_idx += 1
-                    print(f"[Qdrant] Storing {row["article_id"]} into Vector DB...")
+                    print(f"[Qdrant] Storing {row['article_id']} into Vector DB...")
                     store.upsert_points([{
                         "id" : row["article_id"],
                         "vector" : embedding,

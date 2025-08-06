@@ -45,8 +45,6 @@ def build_get_queue_query(table_name: str) -> str:
             updated_at
         FROM 
             {table_name}
-        WHERE
-            blog_id != 1
         ORDER BY RAND()
         LIMIT {os.getenv('LIMIT', 10)} 
         """

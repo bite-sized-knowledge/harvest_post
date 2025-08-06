@@ -22,7 +22,7 @@ class QdrantVectorStore:
         self.collection_name = collection_name
         self.vector_dim = vector_dim
 
-        url = f"{os.getenv("QDRANT_HOST", "")}:{os.getenv("QDRANT_PORT", "")}"
+        url = f"{os.getenv('QDRANT_HOST', '')}:{os.getenv('QDRANT_PORT', '')}"
         if os.getenv("ENVIRONMENT", "prod") == "prod":
             url = os.getenv("QDRANT_ENDPOINT")
 
