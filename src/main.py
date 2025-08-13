@@ -4,7 +4,7 @@ from http import HTTPStatus
 from db_conn import Connection
 from embedder import TextEmbeddings
 from qdrant_config import QdrantVectorStore
-from config import INSERT_QUERY, QUEUE_QUERY, COLUMN_NAMES
+from config import INSERT_QUERY, QUEUE_QUERY, COLUMN_NAMES, get_metadata, update_model_config_query
 from response import HTTPResponse
 from llm_pipeline import LangChainModel
 from preprocessing import BlogPostProcessor, parse_article_text_from_url
@@ -32,7 +32,7 @@ async def process_article(data):
     print(f"[START] Processing article: {article_id}")
 
     try:
-        text = await asyncio.to_thread(parse_article_text_from_url, url)
+        text = await asyncio.to_thread(parse_article_text_from_url, url, blog_id)
         if not text.strip():
             print(f"[SKIP] Article ID: {article_id} - Empty content after parsing")
             return None  # 본문이 없으면 처리하지 않음
@@ -48,8 +48,11 @@ async def process_article(data):
             query, # predict에 들어갈 Query 문
             False, # verbose option : show prompt
             False # verbose option : show llm output 
-
         )
+
+        if predict is None:
+            return None
+
         content = predict.content
 
         values = (
@@ -82,6 +85,20 @@ async def lambda_handler_async():
     print("[LAMBDA START] Connecting to DB...")
     conn = Connection()
 
+    code_metadata = get_metadata()
+    sql_metadata = conn.execute(
+        get_metadata(sql=True)
+    )['model_key'][0]
+
+
+    # LLM Model | Embedding Model | Metadata Update
+    if code_metadata != sql_metadata:
+        print("[LLM Config] Updating...")
+        update_query, insert_query = update_model_config_query()
+        conn._raw_execute(update_query)
+        conn._raw_execute(insert_query)
+
+
     print("[FETCH] Getting articles from queue...")
     queued = conn.execute(QUEUE_QUERY)
     print(f"[FETCH DONE] {len(queued)} articles fetched.")
@@ -113,25 +130,25 @@ async def lambda_handler_async():
             embedder = TextEmbeddings()
             store = QdrantVectorStore(
                 collection_name="bite-vectordb",
-                vector_dim=int(os.getenv("VECTOR_DIM")),
+                vector_dim=int(os.getenv("EMBEDDING_SIZE")),
             )
 
             TASK = ["AWS Bedrock", "Qdrant"]
             for row in insert_dicts:
                 error_idx = 0
                 try:
-                    print(f"[AWS Bedrock] Embedding {row["article_id"]}...")
+                    print(f"[AWS Bedrock] Embedding {row['article_id']}...")
 
                     embedding = await embedder(
                         title=row["title"],
                         description=row.get("description", ""),
                         keywords=row["keywords"],
                         content=row["content"],
-                        dimensions=int(os.getenv("VECTOR_DIM"))
+                        dimensions=int(os.getenv("EMBEDDING_SIZE"))
                     )
 
                     error_idx += 1
-                    print(f"[Qdrant] Storing {row["article_id"]} into Vector DB...")
+                    print(f"[Qdrant] Storing {row['article_id']} into Vector DB...")
                     store.upsert_points([{
                         "id" : row["article_id"],
                         "vector" : embedding,

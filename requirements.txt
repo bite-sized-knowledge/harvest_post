@@ -1,19 +1,24 @@
-#requirements.txt
+# 필수 유틸
 python-dotenv
-numpy
-pandas
+backoff
+fake-useragent
+
+# 데이터 처리
+numpy==1.24.4
+pandas==2.1.4
 sqlalchemy
 pymysql
-beautifulsoup4
-lxml
-lxml_html_clean
 
+# 웹 크롤링
+beautifulsoup4==4.12.3
+lxml==4.9.3
+trafilatura==1.6.1
+
+# LLM 기반 추천
 langchain
 langchain-openai
 langchain-aws
 pydantic
-trafilatura
-fake-useragent
-backoff
 
-qdrant_client
+# Vector DB
+qdrant-client

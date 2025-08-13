@@ -10,7 +10,7 @@ from .schemas import TopicClassification
 class LangChainModel:
     def __init__(self):
         AWS_LLM_MODEL = "apac.amazon.nova-micro-v1:0"
-        OPENAI_LLM_MODEL = "gpt-4.1-nano-2025-04-14"
+        OPENAI_LLM_MODEL = "gpt-5-nano"
 
         # Load prompt config
         with open('prompt.yml') as f:
@@ -86,4 +86,5 @@ class LangChainModel:
             except Exception as e:
                 print(f"[WARNING] {name} chain failed: {e}")
 
-        raise RuntimeError("All chains failed")
+        print("[ERROR] All LLM Chains Failed")
+        return None

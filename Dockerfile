@@ -1,5 +1,5 @@
 # AWS Lambda용 Python 3.11 베이스 이미지 사용
-FROM umihico/aws-lambda-selenium-python:latest
+FROM public.ecr.aws/lambda/python:3.11
 
 # Python 패키지 설치
 COPY requirements.txt .
