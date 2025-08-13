@@ -23,6 +23,13 @@ session.mount('https://', adapter)
 cfg = use_config()
 cfg.set("DEFAULT", "EXTRACTION_TIMEOUT", "0")  # signal 사용 안함
 
+def transform_url(url):
+    # only for Naver D2 Blog
+    id = url.split("/")[-1]
+    ret = f"https://d2.naver.com/api/v1/contents/{id}"
+    return ret
+
+
 def generate_user_agent():
     if UA:
         try:
@@ -79,7 +86,7 @@ def extract_text_from_json_script(html: str) -> str:
 
 
 @backoff.on_exception(backoff.expo, requests.exceptions.RequestException, max_tries=3)
-def extract_html_via_requests(url: str, user_agent: str, timeout: int = 10) -> str:
+def extract_html_via_requests(url: str, blog_id: int, user_agent: str, timeout: int = 10) -> str:
     headers = {
         'User-Agent': user_agent,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -90,15 +97,23 @@ def extract_html_via_requests(url: str, user_agent: str, timeout: int = 10) -> s
     response = session.get(url, headers=headers, timeout=timeout)
     response.raise_for_status()
     response.encoding = 'utf-8'
+
+    if blog_id == 6:
+        ret = json.loads(response.text)
+        return ret['postHtml']
+
     return response.text
 
-def parse_article_text_from_url(url: str) -> str:
+def parse_article_text_from_url(url: str, blog_id: int) -> str:
     user_agent = generate_user_agent()
+
+    if blog_id == 6: #Naver D2
+        url = transform_url(url)
     print(f"[INFO] Fetching {url}")
 
     html = ""
     try:
-        html = extract_html_via_requests(url, user_agent)
+        html = extract_html_via_requests(url, blog_id, user_agent)
     except Exception as e:
         print(f"[REQUEST ERROR] {url}: {e}")
         return ""
@@ -118,5 +133,7 @@ def parse_article_text_from_url(url: str) -> str:
         include_images=False,
         config=cfg
     )
+
+    print(text)
 
     return text or ""

@@ -32,7 +32,7 @@ async def process_article(data):
     print(f"[START] Processing article: {article_id}")
 
     try:
-        text = await asyncio.to_thread(parse_article_text_from_url, url)
+        text = await asyncio.to_thread(parse_article_text_from_url, url, blog_id)
         if not text.strip():
             print(f"[SKIP] Article ID: {article_id} - Empty content after parsing")
             return None  # 본문이 없으면 처리하지 않음
