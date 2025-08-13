@@ -8,10 +8,14 @@ if not ARTICLE_TABLE:
 
 
 # ---------- LLM Metadata Configuration ----------
+
 LLM_MODEL = "gpt-5-nano"
 EMBEDDING_MODEL = "titan-embed-text-v2"
 EMBEDDING_SIZE = 512
 CHUNK_SIZE=5000
+
+os.environ['EMBEDDING_SIZE'] = str(EMBEDDING_SIZE)
+os.environ['CHUNK_SIZE'] = str(CHUNK_SIZE)
 
 COLUMN_NAMES = [
     'article_id', 'blog_id', 'url', 'title', 'thumbnail',

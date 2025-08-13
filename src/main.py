@@ -130,7 +130,7 @@ async def lambda_handler_async():
             embedder = TextEmbeddings()
             store = QdrantVectorStore(
                 collection_name="bite-vectordb",
-                vector_dim=int(os.getenv("VECTOR_DIM")),
+                vector_dim=int(os.getenv("EMBEDDING_SIZE")),
             )
 
             TASK = ["AWS Bedrock", "Qdrant"]
@@ -144,7 +144,7 @@ async def lambda_handler_async():
                         description=row.get("description", ""),
                         keywords=row["keywords"],
                         content=row["content"],
-                        dimensions=int(os.getenv("VECTOR_DIM"))
+                        dimensions=int(os.getenv("EMBEDDING_SIZE"))
                     )
 
                     error_idx += 1

@@ -134,6 +134,4 @@ def parse_article_text_from_url(url: str, blog_id: int) -> str:
         config=cfg
     )
 
-    print(text)
-
     return text or ""
