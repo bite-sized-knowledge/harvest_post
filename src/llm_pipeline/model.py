@@ -71,20 +71,16 @@ class LangChainModel:
             print(self.prompt_generator.preview_prompt(text, level="main"))
             print("=" * 50)
 
-        chains = [
-            ("OpenAI", self.prompt_generator.prompt | self.model | self._safe_parser()),
-            ("AWS Bedrock", self.prompt_generator.retry | self.back_up | self._safe_parser()),
-        ]
+        name, chain = ["OpenAI", self.prompt_generator.prompt | self.model | self._safe_parser()]
 
-        for name, chain in chains:
-            try:
-                print(f"[INFO] Trying {name} chain...")
-                ret = chain.invoke(input_data)
-                if show_output:
-                    print(ret)
-                return ret
-            except Exception as e:
-                print(f"[WARNING] {name} chain failed: {e}")
+        try:
+            print(f"[INFO] Trying {name} chain...")
+            ret = chain.invoke(input_data)
+            if show_output:
+                print(ret)
+            return ret
+        except Exception as e:
+            print(f"[WARNING] {name} chain failed: {e}")
 
         print("[ERROR] All LLM Chains Failed")
         return None
