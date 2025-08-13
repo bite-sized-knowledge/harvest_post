@@ -4,7 +4,7 @@ from http import HTTPStatus
 from db_conn import Connection
 from embedder import TextEmbeddings
 from qdrant_config import QdrantVectorStore
-from config import INSERT_QUERY, QUEUE_QUERY, COLUMN_NAMES
+from config import INSERT_QUERY, QUEUE_QUERY, COLUMN_NAMES, get_metadata, update_model_config_query
 from response import HTTPResponse
 from llm_pipeline import LangChainModel
 from preprocessing import BlogPostProcessor, parse_article_text_from_url
@@ -32,7 +32,7 @@ async def process_article(data):
     print(f"[START] Processing article: {article_id}")
 
     try:
-        text = await asyncio.to_thread(parse_article_text_from_url, url)
+        text = await asyncio.to_thread(parse_article_text_from_url, url, blog_id)
         if not text.strip():
             print(f"[SKIP] Article ID: {article_id} - Empty content after parsing")
             return None  # 본문이 없으면 처리하지 않음
@@ -85,6 +85,20 @@ async def lambda_handler_async():
     print("[LAMBDA START] Connecting to DB...")
     conn = Connection()
 
+    code_metadata = get_metadata()
+    sql_metadata = conn.execute(
+        get_metadata(sql=True)
+    )['model_key'][0]
+
+
+    # LLM Model | Embedding Model | Metadata Update
+    if code_metadata != sql_metadata:
+        print("[LLM Config] Updating...")
+        update_query, insert_query = update_model_config_query()
+        conn._raw_execute(update_query)
+        conn._raw_execute(insert_query)
+
+
     print("[FETCH] Getting articles from queue...")
     queued = conn.execute(QUEUE_QUERY)
     print(f"[FETCH DONE] {len(queued)} articles fetched.")
@@ -116,7 +130,7 @@ async def lambda_handler_async():
             embedder = TextEmbeddings()
             store = QdrantVectorStore(
                 collection_name="bite-vectordb",
-                vector_dim=int(os.getenv("VECTOR_DIM")),
+                vector_dim=int(os.getenv("EMBEDDING_SIZE")),
             )
 
             TASK = ["AWS Bedrock", "Qdrant"]
@@ -130,7 +144,7 @@ async def lambda_handler_async():
                         description=row.get("description", ""),
                         keywords=row["keywords"],
                         content=row["content"],
-                        dimensions=int(os.getenv("VECTOR_DIM"))
+                        dimensions=int(os.getenv("EMBEDDING_SIZE"))
                     )
 
                     error_idx += 1
