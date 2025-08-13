@@ -24,12 +24,6 @@ class LangChainModel:
             temperature=0
         )
 
-        self.back_up = ChatBedrockConverse(
-            model_id=AWS_LLM_MODEL,
-            region_name="ap-northeast-2",
-            temperature=0,
-        )
-
     def _safe_parser(self):
         def _inner(msg):
             content = msg.content if hasattr(msg, "content") else msg
