@@ -112,6 +112,7 @@ def build_get_queue_query(table_name: str) -> str:
             title,
             thumbnail,
             description,
+            content,
             published_at,
             created_at,
             updated_at
@@ -130,13 +131,14 @@ def build_get_queue_query(table_name: str) -> str:
     #         title,
     #         thumbnail,
     #         description,
+    #         content,
     #         published_at,
     #         created_at,
     #         updated_at
     #     FROM 
     #         {table_name}
     #     WHERE
-    #         article_id = 'pdyWOy1eDoGux5zgc8FPktSX3G4'
+    #         article_id = 'aWSdeAb7SUtm4a0i4XKDHYERbSN'
     #     """
     return query
 

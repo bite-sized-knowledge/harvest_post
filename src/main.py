@@ -7,7 +7,7 @@ from qdrant_config import QdrantVectorStore
 from config import INSERT_QUERY, QUEUE_QUERY, COLUMN_NAMES, get_metadata, update_model_config_query
 from response import HTTPResponse
 from llm_pipeline import LangChainModel
-from preprocessing import BlogPostProcessor, parse_article_text_from_url
+from preprocessing import BlogPostProcessor, parse_article_text_from_html 
 from sqlalchemy.sql import text, bindparam
 
 
@@ -24,6 +24,7 @@ async def process_article(data):
     blog_id = int(data.get("blog_id"))
     title = data.get("title")
     description = data.get("description")
+    content = data.get("content")
 
     published_at = data.get('published_at')
     created_at = data.get('created_at')
@@ -32,7 +33,7 @@ async def process_article(data):
     print(f"[START] Processing article: {article_id}")
 
     try:
-        text = await asyncio.to_thread(parse_article_text_from_url, url, blog_id)
+        text = await asyncio.to_thread(parse_article_text_from_html, content)
         if not text.strip():
             print(f"[SKIP] Article ID: {article_id} - Empty content after parsing")
             return None  # 본문이 없으면 처리하지 않음
