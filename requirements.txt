@@ -1,7 +1,5 @@
 # 필수 유틸
 python-dotenv
-backoff
-fake-useragent
 
 # 데이터 처리
 numpy==1.24.4

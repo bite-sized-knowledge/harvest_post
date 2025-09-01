@@ -1,137 +1,102 @@
 import re
-import json
-import requests
 from bs4 import BeautifulSoup
 from trafilatura import extract
-from trafilatura.settings import use_config
-from fake_useragent import UserAgent
-from requests.adapters import HTTPAdapter
-import backoff
 from html import unescape
 
-try:
-    UA = UserAgent()
-except Exception:
-    UA = None
+def _clean_text(text: str) -> str:
+    """공백/개행 정리 및 잡스러운 라인 제거(너무 짧은 라인 등은 과도 제거 방지)."""
+    if not text:
+        return ""
+    # HTML 엔티티 해제
+    text = unescape(text)
+    # \xa0 -> space
+    text = text.replace("\xa0", " ")
+    # 라인 단위 정리: 앞뒤 공백 제거 + 빈 라인 축약
+    lines = [ln.strip() for ln in text.splitlines()]
+    # 연속 빈 라인은 하나로 축약
+    out, prev_blank = [], False
+    for ln in lines:
+        is_blank = (ln == "")
+        if is_blank and prev_blank:
+            continue
+        out.append(ln)
+        prev_blank = is_blank
+    # 다중 스페이스 축약
+    text = "\n".join(out)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text.strip()
 
-# 세션 구성 (커넥션 풀 포함)
-session = requests.Session()
-adapter = HTTPAdapter(pool_connections=10, pool_maxsize=10)
-session.mount('http://', adapter)
-session.mount('https://', adapter)
-
-cfg = use_config()
-cfg.set("DEFAULT", "EXTRACTION_TIMEOUT", "0")  # signal 사용 안함
-
-def transform_url(url):
-    # only for Naver D2 Blog
-    id = url.split("/")[-1]
-    ret = f"https://d2.naver.com/api/v1/contents/{id}"
-    return ret
-
-
-def generate_user_agent():
-    if UA:
-        try:
-            return UA.random
-        except Exception:
-            pass
-    return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
-
-
-def extract_text_from_json_script(html: str) -> str:
-    soup = BeautifulSoup(html, "lxml")
-    scripts = soup.find_all("script")
-
-    for script in scripts:
-        if script.has_attr("type") and "json" in script["type"]:
-            try:
-                data = json.loads(script.string)
-                # 재귀적으로 <p>, <div>, <article> 태그가 있는 HTML 문자열을 찾는다
-                def find_html(obj):
-                    if isinstance(obj, dict):
-                        for v in obj.values():
-                            result = find_html(v)
-                            if result:
-                                return result
-                    elif isinstance(obj, list):
-                        for item in obj:
-                            result = find_html(item)
-                            if result:
-                                return result
-                    elif isinstance(obj, str):
-                        if re.search(r'<(p|div|article)[\s>]', obj):
-                            return obj
-                    return None
-
-                html_content = find_html(data)
-                if html_content:
-                    text = BeautifulSoup(unescape(html_content), "lxml").get_text(separator="\n")
-                    return text.strip()
-            except Exception:
-                continue
-
-        elif script.has_attr("id") and script.string and re.match(r'__\w+__', script["id"]):
-            try:
-                data = json.loads(script.string)
-                html_candidate = json.dumps(data)
-                match = re.search(r'(<p>.*?</p>)', html_candidate)
-                if match:
-                    raw_html = unescape(match.group(1))
-                    text = BeautifulSoup(raw_html, "lxml").get_text(separator="\n")
-                    return text.strip()
-            except Exception:
-                continue
-    return ""
-
-
-@backoff.on_exception(backoff.expo, requests.exceptions.RequestException, max_tries=3)
-def extract_html_via_requests(url: str, blog_id: int, user_agent: str, timeout: int = 10) -> str:
-    headers = {
-        'User-Agent': user_agent,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'ko,en-US;q=0.9,en;q=0.8',
-        'Connection': 'close'
-    }
-
-    response = session.get(url, headers=headers, timeout=timeout)
-    response.raise_for_status()
-    response.encoding = 'utf-8'
-
-    if blog_id == 6:
-        ret = json.loads(response.text)
-        return ret['postHtml']
-
-    return response.text
-
-def parse_article_text_from_url(url: str, blog_id: int) -> str:
-    user_agent = generate_user_agent()
-
-    if blog_id == 6: #Naver D2
-        url = transform_url(url)
-    print(f"[INFO] Fetching {url}")
-
-    html = ""
-    try:
-        html = extract_html_via_requests(url, blog_id, user_agent)
-    except Exception as e:
-        print(f"[REQUEST ERROR] {url}: {e}")
+def parse_article_text_from_html(html: str) -> str:
+    """
+    원문 HTML 문자열에서 본문 텍스트만 추출한다.
+    1) JSON 스크립트(SSR/하이드레이션)에 본문이 포함된 경우 우선 추출
+    2) trafilatura로 본문 추출
+    3) 실패 시 BeautifulSoup로 스크립트/스타일/내비 제거 후 텍스트화
+    """
+    if not html or not isinstance(html, str):
         return ""
 
-    extracted = extract_text_from_json_script(html)
-    if extracted:
-        print(f"[INFO] Parsed from <script> JSON content for {url}")
-        return extracted
+    # 1) <script type="application/ld+json"> 등 JSON 내부의 HTML 스니펫 우선 탐색
+    try:
+        soup = BeautifulSoup(html, "lxml")
+        scripts = soup.find_all("script")
+        for sc in scripts:
+            # JSON 유형 혹은 프레임워크 하이드레이션 id 패턴
+            if (sc.has_attr("type") and "json" in sc["type"]) or (sc.has_attr("id") and re.match(r"__\w+__", sc["id"])):
+                if sc.string:
+                    # 문자열 내에 <p|div|article> 태그 패턴이 있으면 본문 후보로 간주
+                    m = re.search(r'(<(p|div|article)[^>]*>.*?</\2>)', sc.string, flags=re.DOTALL|re.IGNORECASE)
+                    if m:
+                        frag = unescape(m.group(1))
+                        frag_soup = BeautifulSoup(frag, "lxml")
+                        # br/li 개행 보존
+                        for br in frag_soup.find_all("br"):
+                            br.replace_with("\n")
+                        text = frag_soup.get_text(separator="\n")
+                        text = _clean_text(text)
+                        if text and len(text.split()) > 15:  # 너무 짧으면 패스
+                            return text
+    except Exception:
+        pass
 
-    text = extract(
-        html,
-        include_comments=False,
-        include_tables=False,
-        with_metadata=False,
-        include_formatting=False,
-        include_links=False,
-        include_images=False,
-        config=cfg
-    )
+    # 2) trafilatura로 본문 추출
+    try:
+        text = extract(
+            html,
+            include_comments=False,
+            include_tables=False,
+            with_metadata=False,
+            include_formatting=False,
+            include_links=False,
+            include_images=False,
+            favor_recall=True,   # 회수율 우선(짧은 글 누락 방지)
+        )
+        text = _clean_text(text)
+        if text:
+            return text
+    except Exception:
+        pass
 
-    return text or ""
+    # 3) BeautifulSoup fallback: 불필요 영역 제거 후 텍스트화
+    try:
+        soup = BeautifulSoup(html, "lxml")
+
+        # 제거 대상 태그들
+        for tag in soup(["script", "style", "noscript", "iframe", "svg", "canvas", "form"]):
+            tag.decompose()
+        # 구조적 잡영역 제거(있으면)
+        for sel in ["header", "footer", "nav", "aside"]:
+            for node in soup.select(sel):
+                node.decompose()
+
+        # li/br 개행 보존
+        for br in soup.find_all("br"):
+            br.replace_with("\n")
+        for li in soup.find_all("li"):
+            txt = li.get_text(" ", strip=True)
+            li.string = txt + "\n"
+
+        text = soup.get_text(separator="\n")
+        return _clean_text(text)
+    except Exception:
+        return ""
