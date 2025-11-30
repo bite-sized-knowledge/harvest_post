@@ -1,9 +1,17 @@
 # AWS Lambda용 Python 3.11 베이스 이미지 사용
 FROM public.ecr.aws/lambda/python:3.11
 
+# Rust toolchain & build deps (for packages like tiktoken)
+RUN yum install -y gcc gcc-c++ make openssl-devel libffi-devel curl \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal \
+    && yum clean all && rm -rf /var/cache/yum
+
+ENV PATH="/root/.cargo/bin:${PATH}"
+
 # Python 패키지 설치
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
 # Lambda 함수 코드 복사
 COPY src/ ${LAMBDA_TASK_ROOT}
