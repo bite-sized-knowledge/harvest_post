@@ -29,55 +29,44 @@ class LangChainModel:
             return self._try_parse(content)
         return RunnableLambda(_inner)
 
-    def _find_json_bounds(self, text: str) -> tuple:
-        """중첩된 괄호를 고려하여 첫 번째 완전한 JSON 객체의 시작/끝 인덱스 반환"""
-        start = text.find('{')
-        if start == -1:
-            return -1, -1
-
-        depth = 0
-        in_string = False
-        escape_next = False
-
-        for i, char in enumerate(text[start:], start):
-            if escape_next:
-                escape_next = False
-                continue
-
-            if char == '\\' and in_string:
-                escape_next = True
-                continue
-
-            if char == '"' and not escape_next:
-                in_string = not in_string
-                continue
-
-            if in_string:
-                continue
-
-            if char == '{':
-                depth += 1
-            elif char == '}':
-                depth -= 1
-                if depth == 0:
-                    return start, i + 1
-
-        return -1, -1
-
     def extract_json(self, text: str) -> dict:
-        """텍스트에서 첫 번째 완전한 JSON 객체 추출"""
-        start, end = self._find_json_bounds(text)
-        if start == -1:
-            raise ValueError("No JSON object found in text.")
+        """텍스트에서 실제 데이터 JSON 추출 (스키마 정의 제외)"""
+        # 모든 JSON 객체 후보 찾기
+        pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+        matches = re.findall(pattern, text, re.DOTALL)
 
-        json_str = text[start:end]
+        if not matches:
+            # fallback: greedy 매칭
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            if not match:
+                raise ValueError("No JSON object found in text.")
+            matches = [match.group()]
 
-        try:
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            json_str = re.sub(r',\s*}', '}', json_str)
-            json_str = re.sub(r',\s*]', ']', json_str)
-            return json.loads(json_str)
+        for json_str in matches:
+            try:
+                parsed = json.loads(json_str)
+                # 스키마 정의는 건너뜀 ($defs, properties, type 등이 있으면 스키마)
+                if isinstance(parsed, dict):
+                    if '$defs' in parsed or 'properties' in parsed or parsed.get('type') == 'object':
+                        continue
+                    # 필수 필드가 있는지 확인
+                    if 'content' in parsed or 'focusing' in parsed or 'keywords' in parsed:
+                        return parsed
+            except json.JSONDecodeError:
+                continue
+
+        # 마지막 시도: trailing comma 수정 후 재시도
+        for json_str in matches:
+            try:
+                fixed = re.sub(r',\s*}', '}', json_str)
+                fixed = re.sub(r',\s*]', ']', fixed)
+                parsed = json.loads(fixed)
+                if isinstance(parsed, dict) and '$defs' not in parsed:
+                    return parsed
+            except json.JSONDecodeError:
+                continue
+
+        raise ValueError("No valid data JSON found (only schema definitions)")
 
     def _try_parse(self, output: str) -> TopicClassification:
         try:
