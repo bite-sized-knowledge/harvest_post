@@ -21,7 +21,7 @@ langchain-aws==0.2.10
 pydantic==2.10.4
 
 # Vector DB
-qdrant-client==1.12.1
+qdrant-client==1.16.3
 
 # AWS
 boto3==1.35.86
