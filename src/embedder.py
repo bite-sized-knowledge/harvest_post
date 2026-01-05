@@ -3,7 +3,7 @@ import json
 import boto3
 import asyncio
 from typing import List
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from numpy.linalg import norm
 
 class TextEmbeddings:
