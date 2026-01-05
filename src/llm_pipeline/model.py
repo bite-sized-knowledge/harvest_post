@@ -19,8 +19,7 @@ class LangChainModel:
         self.prompt_generator = PromptGenerator(self.prompt_data)
 
         self.model = ChatOpenAI(
-            model_name=OPENAI_LLM_MODEL,
-            temperature=1  # GPT-5 models only support default temperature (1)
+            model_name=OPENAI_LLM_MODEL
         )
 
     def _safe_parser(self):
