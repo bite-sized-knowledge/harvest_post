@@ -29,42 +29,56 @@ class LangChainModel:
             return self._try_parse(content)
         return RunnableLambda(_inner)
 
+    def _is_schema(self, obj: dict) -> bool:
+        """JSON 객체가 스키마 정의인지 확인"""
+        schema_keys = {'$defs', 'properties', 'enum', 'title', 'type', 'required', '$ref'}
+        if not isinstance(obj, dict):
+            return False
+        # 스키마 키가 있고 실제 데이터 키가 없으면 스키마
+        has_schema_keys = bool(set(obj.keys()) & schema_keys)
+        has_data_keys = bool({'content', 'focusing', 'keywords', 'lang'} & set(obj.keys()))
+        # 중첩된 스키마 확인 (Category 등)
+        for v in obj.values():
+            if isinstance(v, dict) and ('enum' in v or 'type' in v or '$ref' in v):
+                return True
+        return has_schema_keys and not has_data_keys
+
     def extract_json(self, text: str) -> dict:
         """텍스트에서 실제 데이터 JSON 추출 (스키마 정의 제외)"""
-        # 모든 JSON 객체 후보 찾기
-        pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
-        matches = re.findall(pattern, text, re.DOTALL)
+        # greedy 매칭으로 가장 큰 JSON 찾기
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if not match:
+            raise ValueError("No JSON object found in text.")
 
-        if not matches:
-            # fallback: greedy 매칭
-            match = re.search(r'\{.*\}', text, re.DOTALL)
-            if not match:
-                raise ValueError("No JSON object found in text.")
-            matches = [match.group()]
+        json_str = match.group()
 
-        for json_str in matches:
+        # 여러 JSON이 연결된 경우 분리 시도
+        try:
+            parsed = json.loads(json_str)
+            if not self._is_schema(parsed):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+        # 스키마가 포함된 경우, 텍스트에서 실제 데이터 JSON 패턴 찾기
+        # content, focusing, keywords, lang 키를 가진 JSON 찾기
+        data_pattern = r'\{[^{}]*"content"\s*:[^{}]*"focusing"\s*:[^{}]*\}'
+        data_match = re.search(data_pattern, text, re.DOTALL)
+        if data_match:
             try:
-                parsed = json.loads(json_str)
-                # 스키마 정의는 건너뜀 ($defs, properties, type 등이 있으면 스키마)
-                if isinstance(parsed, dict):
-                    if '$defs' in parsed or 'properties' in parsed or parsed.get('type') == 'object':
-                        continue
-                    # 필수 필드가 있는지 확인
-                    if 'content' in parsed or 'focusing' in parsed or 'keywords' in parsed:
-                        return parsed
+                return json.loads(data_match.group())
             except json.JSONDecodeError:
-                continue
+                pass
 
-        # 마지막 시도: trailing comma 수정 후 재시도
-        for json_str in matches:
-            try:
-                fixed = re.sub(r',\s*}', '}', json_str)
-                fixed = re.sub(r',\s*]', ']', fixed)
-                parsed = json.loads(fixed)
-                if isinstance(parsed, dict) and '$defs' not in parsed:
-                    return parsed
-            except json.JSONDecodeError:
-                continue
+        # 마지막 시도: trailing comma 수정
+        try:
+            fixed = re.sub(r',\s*}', '}', json_str)
+            fixed = re.sub(r',\s*]', ']', fixed)
+            parsed = json.loads(fixed)
+            if not self._is_schema(parsed):
+                return parsed
+        except json.JSONDecodeError:
+            pass
 
         raise ValueError("No valid data JSON found (only schema definitions)")
 
