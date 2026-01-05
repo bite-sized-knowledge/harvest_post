@@ -20,7 +20,8 @@ class LangChainModel:
 
         # LLM clients
         self.model = ChatOpenAI(
-            model_name=OPENAI_LLM_MODEL
+            model_name=OPENAI_LLM_MODEL,
+            temperature=1  # GPT-5 models only support default temperature (1)
         )
 
     def _safe_parser(self):
