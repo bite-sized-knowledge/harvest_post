@@ -120,6 +120,11 @@ async def lambda_handler_async():
                 insert_rows.append(values)
                 successful_ids.append(article_id)
 
+        # 모든 article 처리 실패 시
+        if not insert_rows:
+            await asyncio.to_thread(conn.close)
+            return HTTPResponse(HTTPStatus.INTERNAL_SERVER_ERROR, "All articles failed to process").get_response()
+
         # ORM 기반 batch insert
         if insert_rows:
             print(f"[INSERT] Inserting {len(insert_rows)} records...")
@@ -160,8 +165,10 @@ async def lambda_handler_async():
                     }])
 
                 except Exception as e:
-                    print(f"[{TASK[error_idx]} Error] Article ID : {row['article_id']} - {e}")
-                    return None
+                    error_msg = f"[{TASK[error_idx]} Error] Article ID : {row['article_id']} - {e}"
+                    print(error_msg)
+                    await asyncio.to_thread(conn.close)
+                    return HTTPResponse(HTTPStatus.INTERNAL_SERVER_ERROR, error_msg).get_response()
 
             await asyncio.to_thread(conn.session_execute, INSERT_QUERY, insert_dicts)
 
