@@ -1,22 +1,27 @@
 # 필수 유틸
-python-dotenv
+python-dotenv==1.0.1
 
 # 데이터 처리
 numpy==1.24.4
 pandas==2.1.4
-sqlalchemy
-pymysql
+sqlalchemy==2.0.25
+pymysql==1.1.0
 
 # 웹 크롤링
 beautifulsoup4==4.12.3
 lxml==4.9.3
 trafilatura==1.6.1
 
-# LLM 기반 추천
-langchain
-langchain-openai
-langchain-aws
-pydantic
+# LLM - 버전 호환성 고정
+langchain==0.3.14
+langchain-core==0.3.28
+langchain-text-splitters==0.3.4
+langchain-openai==0.2.14
+langchain-aws==0.2.10
+pydantic==2.10.4
 
 # Vector DB
-qdrant-client
+qdrant-client==1.12.1
+
+# AWS
+boto3==1.35.86
