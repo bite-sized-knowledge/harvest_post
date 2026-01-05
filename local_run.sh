@@ -11,7 +11,7 @@ doppler secrets download \
   --project harvest_post \
   --config dev \
   --format env \
-  --no-file > "$TMP_ENV_FILE"
+  --no-file | sed 's/"//g' > "$TMP_ENV_FILE"
 
 docker run -p 9000:8080 \
   --env-file "$TMP_ENV_FILE" \
