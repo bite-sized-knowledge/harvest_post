@@ -19,7 +19,8 @@ class LangChainModel:
         self.prompt_generator = PromptGenerator(self.prompt_data)
 
         self.model = ChatOpenAI(
-            model_name=OPENAI_LLM_MODEL
+            model_name=OPENAI_LLM_MODEL,
+            temperature=1
         )
 
     def _safe_parser(self):
