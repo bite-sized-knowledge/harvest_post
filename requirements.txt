@@ -14,7 +14,7 @@ trafilatura==1.6.1
 
 # LLM - 버전 호환성 고정
 langchain==0.3.14
-langchain-core==0.3.28
+langchain-core==0.3.29
 langchain-text-splitters==0.3.4
 langchain-openai==0.2.14
 langchain-aws==0.2.10

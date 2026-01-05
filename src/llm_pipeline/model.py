@@ -20,8 +20,7 @@ class LangChainModel:
 
         # LLM clients
         self.model = ChatOpenAI(
-                model_name=OPENAI_LLM_MODEL,
-            temperature=0
+            model_name=OPENAI_LLM_MODEL
         )
 
     def _safe_parser(self):
