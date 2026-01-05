@@ -12,6 +12,7 @@ import numpy as np
 import uuid
 import os
 
+
 class QdrantVectorStore:
     def __init__(
         self,
@@ -71,7 +72,7 @@ class QdrantVectorStore:
         query_vector: Union[List[float], np.ndarray],
         top_k: int = 5,
         filters: Optional[Dict[str, Union[str, int]]] = None,
-    ) -> List[Dict]:
+    ) -> List[str]:
         """
         Args:
             query_vector: 검색할 기준 벡터
@@ -79,7 +80,7 @@ class QdrantVectorStore:
             filters: {"category": "AI"} 와 같은 payload 필터
 
         Returns:
-            List of dicts with keys: artcle_id, score, payload
+            List of article_ids
         """
         if isinstance(query_vector, np.ndarray):
             query_vector = query_vector.tolist()
@@ -93,18 +94,16 @@ class QdrantVectorStore:
                 ]
             )
 
-        results = self.client.search(
+        # qdrant-client 1.16+ uses query_points instead of search
+        results = self.client.query_points(
             collection_name=self.collection_name,
-            query_vector=query_vector,
+            query=query_vector,
             limit=top_k,
             query_filter=query_filter,
         )
 
-        similars = [
-            {"id": hit.id, "score": hit.score, "payload": hit.payload}
-            for hit in results
-        ]
-
         return [
-            sim["article_id"] for sim in similars["payload"]
+            hit.payload.get("article_id")
+            for hit in results.points
+            if hit.payload
         ]

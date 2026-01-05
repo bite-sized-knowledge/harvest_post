@@ -10,8 +10,7 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Python 패키지 설치
 COPY requirements.txt .
-RUN python -m pip install --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Lambda 함수 코드 복사
 COPY src/ ${LAMBDA_TASK_ROOT}
