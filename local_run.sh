@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+# 이전 dangling 이미지 정리
+docker image prune -f --filter "dangling=true" 2>/dev/null || true
+
 docker build --platform linux/x86_64 -t lambda-local .
 
 TMP_ENV_FILE=$(mktemp)
