@@ -1,6 +1,9 @@
 import re
+import warnings
 from .unicode_escape import decode_unicode_escapes
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning
+
+warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
 
 # 불필요한 공백 문자들
 INVISIBLE_SPACES = [
