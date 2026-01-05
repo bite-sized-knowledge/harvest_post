@@ -52,14 +52,9 @@ async def process_article(data):
         print(f"[PREDICT] Article ID: {article_id}")
         query = f"Title : {title}, Description : {desc_processed}, Body Content : {preprocessed}"
 
-        # LLM 호출에 세마포어 적용
+        # LLM 호출에 세마포어 적용 (async native)
         async with LLM_SEMAPHORE:
-            predict = await asyncio.to_thread(
-                MODEL.predict,
-                query,
-                False,
-                False
-            )
+            predict = await MODEL.predict(query, False, False)
 
         if predict is None:
             return None

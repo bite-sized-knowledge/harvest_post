@@ -82,7 +82,7 @@ class LangChainModel:
                     print(f"  Field error: {err}")
             raise
 
-    def predict(self, text: str, show_prompt: bool = False, show_output: bool = True) -> TopicClassification:
+    async def predict(self, text: str, show_prompt: bool = False, show_output: bool = True) -> TopicClassification:
         input_data = {"content": text}
 
         if show_prompt:
@@ -90,16 +90,16 @@ class LangChainModel:
             print(self.prompt_generator.preview_prompt(text, level="main"))
             print("=" * 50)
 
-        name, chain = ["OpenAI", self.prompt_generator.prompt | self.model | self._safe_parser()]
+        chain = self.prompt_generator.prompt | self.model | self._safe_parser()
 
         try:
-            print(f"[INFO] Trying {name} chain...")
-            ret = chain.invoke(input_data)
+            print("[INFO] Trying OpenAI chain...")
+            ret = await chain.ainvoke(input_data)
             if show_output:
                 print(ret)
             return ret
         except Exception as e:
-            print(f"[WARNING] {name} chain failed: {e}")
+            print(f"[WARNING] OpenAI chain failed: {e}")
 
         print("[ERROR] All LLM Chains Failed")
         return None
