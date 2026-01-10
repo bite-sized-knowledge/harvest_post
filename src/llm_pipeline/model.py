@@ -1,26 +1,36 @@
 import yaml
 import re
 import json
+import asyncio
+import sys
+import os
+
+# config 모듈 경로 추가
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import LLM_CONFIG
+
 from langchain_openai import ChatOpenAI
-from langchain_aws import ChatBedrockConverse
 from langchain_core.runnables import RunnableLambda
 from .prompt_generator import PromptGenerator
 from .schemas import TopicClassification
 
 
 class LangChainModel:
-    def __init__(self):
-        AWS_LLM_MODEL = "apac.amazon.nova-micro-v1:0"
-        OPENAI_LLM_MODEL = "gpt-5-nano"
+    # Retry configuration from LLM_CONFIG
+    MAX_RETRIES = LLM_CONFIG.max_retries
+    RETRY_DELAY_BASE = 1.0  # seconds
+    RETRY_DELAY_MAX = 10.0  # seconds
 
+    def __init__(self):
         with open('prompt.yml') as f:
             self.prompt_data = yaml.safe_load(f)
 
         self.prompt_generator = PromptGenerator(self.prompt_data)
 
+        # 설정을 config에서 가져옴 (Single Source of Truth)
         self.model = ChatOpenAI(
-            model_name=OPENAI_LLM_MODEL,
-            temperature=1
+            model_name=LLM_CONFIG.model,
+            temperature=LLM_CONFIG.temperature,
         )
 
     def _safe_parser(self):
@@ -96,6 +106,28 @@ class LangChainModel:
                     print(f"  Field error: {err}")
             raise
 
+    async def _invoke_with_retry(self, chain, input_data: dict) -> TopicClassification:
+        """Exponential backoff으로 재시도 (실패 시 None 반환 → queue에 유지)"""
+        last_exception = None
+
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                return await chain.ainvoke(input_data)
+            except Exception as e:
+                last_exception = e
+                delay = min(
+                    self.RETRY_DELAY_BASE * (2 ** attempt),
+                    self.RETRY_DELAY_MAX
+                )
+                print(f"[RETRY] Attempt {attempt + 1}/{self.MAX_RETRIES} failed: {e}")
+
+                if attempt < self.MAX_RETRIES - 1:
+                    print(f"[RETRY] Waiting {delay:.1f}s before retry...")
+                    await asyncio.sleep(delay)
+
+        print(f"[ERROR] All {self.MAX_RETRIES} attempts failed. Last error: {last_exception}")
+        return None
+
     async def predict(self, text: str, show_prompt: bool = False, show_output: bool = True) -> TopicClassification:
         input_data = {"content": text}
 
@@ -106,14 +138,13 @@ class LangChainModel:
 
         chain = self.prompt_generator.prompt | self.model | self._safe_parser()
 
-        try:
-            print("[INFO] Trying OpenAI chain...")
-            ret = await chain.ainvoke(input_data)
-            if show_output:
-                print(ret)
-            return ret
-        except Exception as e:
-            print(f"[WARNING] OpenAI chain failed: {e}")
+        print("[INFO] Trying OpenAI chain...")
+        result = await self._invoke_with_retry(chain, input_data)
 
-        print("[ERROR] All LLM Chains Failed")
+        if result:
+            if show_output:
+                print(result)
+            return result
+
+        print("[ERROR] LLM chain failed after retries")
         return None

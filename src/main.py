@@ -8,6 +8,8 @@ from config import INSERT_QUERY, QUEUE_QUERY, COLUMN_NAMES, get_metadata, update
 from response import HTTPResponse
 from llm_pipeline import LangChainModel
 from preprocessing import BlogPostProcessor, parse_article_text_from_html
+from errors import ProcessingError, ErrorCategory, ErrorSeverity, classify_exception
+from logger import logger
 from sqlalchemy.sql import text, bindparam
 
 # Concurrency limits
@@ -81,8 +83,16 @@ async def process_article(data):
         return values, article_id
 
     except Exception as e:
-        print(f"[ERROR] Article ID: {article_id} - {str(e)}")
-        return None
+        category, severity = classify_exception(e, context="article_processing")
+        error = ProcessingError(
+            article_id=article_id,
+            category=category,
+            severity=severity,
+            message=str(e),
+            original_exception=e
+        )
+        print(f"[ERROR] {error}")
+        return error
 
 
 async def process_embedding(row: dict, embedder: TextEmbeddings) -> dict:
@@ -110,7 +120,7 @@ def lambda_handler(event, context):
 
 
 async def lambda_handler_async():
-    print("[LAMBDA START] Connecting to DB...")
+    logger.info("Lambda started", stage="init")
     conn = Connection()
 
     code_metadata = get_metadata()
@@ -121,9 +131,9 @@ async def lambda_handler_async():
     # LLM Model | Embedding Model | Metadata Update
     if code_metadata != sql_metadata:
         print("[LLM Config] Updating...")
-        update_query, insert_query = update_model_config_query()
-        conn._raw_execute(update_query)
-        conn._raw_execute(insert_query)
+        update_query, update_params, insert_query = update_model_config_query()
+        conn.session_execute(update_query, update_params)
+        conn.session_execute(insert_query)
 
     print("[FETCH] Getting articles from queue...")
     queued = conn.execute(QUEUE_QUERY)
@@ -139,10 +149,18 @@ async def lambda_handler_async():
 
         insert_rows = []
         successful_ids = []
+        processing_errors = []
 
         for result in results:
             if isinstance(result, Exception):
                 print(f"[ERROR] Task exception: {result}")
+                continue
+            if isinstance(result, ProcessingError):
+                processing_errors.append(result)
+                if result.is_retryable:
+                    print(f"[RETRY-LATER] {result.article_id} will be retried (transient error)")
+                else:
+                    print(f"[SKIP] {result.article_id} skipped (permanent error)")
                 continue
             if result:
                 values, article_id = result
@@ -200,15 +218,16 @@ async def lambda_handler_async():
 
         # 실패한 article 제외하고 DB insert
         if failed_ids:
+            print(f"[RETAIN] Keeping {len(failed_ids)} failed articles in queue for retry: {failed_ids}")
             insert_dicts = [d for d in insert_dicts if d['article_id'] not in failed_ids]
             successful_ids = [aid for aid in successful_ids if aid not in failed_ids]
 
         if insert_dicts:
             await asyncio.to_thread(conn.session_execute, INSERT_QUERY, insert_dicts)
 
-        # 성공한 article_id만 큐에서 삭제
+        # 성공한 article_id만 큐에서 삭제 (실패한 건 queue에 유지되어 다음 실행에서 재처리)
         if successful_ids:
-            print(f"[DELETE] Removing {len(successful_ids)} articles from queue...")
+            print(f"[DELETE] Removing {len(successful_ids)} successfully processed articles from queue...")
             delete_query = text("DELETE FROM article_queue WHERE article_id IN :ids").bindparams(
                 bindparam("ids", expanding=True)
             )
@@ -220,5 +239,5 @@ async def lambda_handler_async():
         return HTTPResponse(HTTPStatus.INTERNAL_SERVER_ERROR, str(e)).get_response()
 
     await asyncio.to_thread(conn.close)
-    print(f"[LAMBDA DONE] {len(successful_ids)} articles processed successfully.")
+    logger.info("Lambda completed", stage="done", processed=len(successful_ids))
     return HTTPResponse(HTTPStatus.CREATED).get_response()

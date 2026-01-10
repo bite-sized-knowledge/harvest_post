@@ -1,4 +1,6 @@
 import os
+from dataclasses import dataclass
+
 
 # ---------- Table Configuration ----------
 ARTICLE_TABLE = os.getenv('ARTICLE_TABLE')
@@ -7,12 +9,32 @@ if not ARTICLE_TABLE:
     raise ValueError("Environment variable 'ARTICLE_TABLE' is not set.")
 
 
-# ---------- LLM Metadata Configuration ----------
+# ---------- LLM Configuration (Single Source of Truth) ----------
+@dataclass(frozen=True)
+class LLMConfig:
+    """LLM 관련 설정 - 모든 LLM 설정은 여기서 관리"""
+    model: str = "gpt-5-nano"
+    temperature: float = 1
+    max_retries: int = 3
 
-LLM_MODEL = "gpt-5-nano"
-EMBEDDING_MODEL = "titan-embed-text-v2"
-EMBEDDING_SIZE = 512
-CHUNK_SIZE=5000
+
+@dataclass(frozen=True)
+class EmbeddingConfig:
+    """임베딩 관련 설정"""
+    model: str = "titan-embed-text-v2"
+    size: int = 512
+    chunk_size: int = 5000
+
+
+# 전역 설정 인스턴스
+LLM_CONFIG = LLMConfig()
+EMBEDDING_CONFIG = EmbeddingConfig()
+
+# 기존 호환성 유지
+LLM_MODEL = LLM_CONFIG.model
+EMBEDDING_MODEL = EMBEDDING_CONFIG.model
+EMBEDDING_SIZE = EMBEDDING_CONFIG.size
+CHUNK_SIZE = EMBEDDING_CONFIG.chunk_size
 
 os.environ['EMBEDDING_SIZE'] = str(EMBEDDING_SIZE)
 os.environ['CHUNK_SIZE'] = str(CHUNK_SIZE)
@@ -51,16 +73,25 @@ def get_metadata(sql=False) -> str:
     """
 
 def update_model_config_query():
-    update_sql = f"""
+    """파라미터화된 쿼리로 SQL Injection 방어"""
+    update_sql = """
     UPDATE llm_config_metadata
     SET
-        llm_model='{LLM_MODEL}',
-        embedding_model='{EMBEDDING_MODEL}',
-        embedding_size={EMBEDDING_SIZE},
-        chunk_size={CHUNK_SIZE};
+        llm_model = :llm_model,
+        embedding_model = :embedding_model,
+        embedding_size = :embedding_size,
+        chunk_size = :chunk_size
     """
-    
-    insert_sql = f"""
+
+    update_params = {
+        'llm_model': LLM_MODEL,
+        'embedding_model': EMBEDDING_MODEL,
+        'embedding_size': EMBEDDING_SIZE,
+        'chunk_size': CHUNK_SIZE,
+    }
+
+    # INSERT 쿼리는 파라미터가 필요 없음 (SELECT from article)
+    insert_sql = """
     INSERT IGNORE INTO article_queue (
         article_id,
         blog_id,
@@ -98,10 +129,10 @@ def update_model_config_query():
         created_at,
         updated_at,
         published_at
-    FROM article;
+    FROM article
     """
 
-    return update_sql, insert_sql
+    return update_sql, update_params, insert_sql
 
 def build_get_queue_query(table_name: str) -> str:
     query = f"""
