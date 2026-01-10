@@ -9,6 +9,7 @@ from response import HTTPResponse
 from llm_pipeline import LangChainModel
 from preprocessing import BlogPostProcessor, parse_article_text_from_html
 from errors import ProcessingError, ErrorCategory, ErrorSeverity, classify_exception
+from logger import logger
 from sqlalchemy.sql import text, bindparam
 
 # Concurrency limits
@@ -119,7 +120,7 @@ def lambda_handler(event, context):
 
 
 async def lambda_handler_async():
-    print("[LAMBDA START] Connecting to DB...")
+    logger.info("Lambda started", stage="init")
     conn = Connection()
 
     code_metadata = get_metadata()
@@ -238,5 +239,5 @@ async def lambda_handler_async():
         return HTTPResponse(HTTPStatus.INTERNAL_SERVER_ERROR, str(e)).get_response()
 
     await asyncio.to_thread(conn.close)
-    print(f"[LAMBDA DONE] {len(successful_ids)} articles processed successfully.")
+    logger.info("Lambda completed", stage="done", processed=len(successful_ids))
     return HTTPResponse(HTTPStatus.CREATED).get_response()
