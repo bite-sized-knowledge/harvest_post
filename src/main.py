@@ -200,15 +200,16 @@ async def lambda_handler_async():
 
         # 실패한 article 제외하고 DB insert
         if failed_ids:
+            print(f"[RETAIN] Keeping {len(failed_ids)} failed articles in queue for retry: {failed_ids}")
             insert_dicts = [d for d in insert_dicts if d['article_id'] not in failed_ids]
             successful_ids = [aid for aid in successful_ids if aid not in failed_ids]
 
         if insert_dicts:
             await asyncio.to_thread(conn.session_execute, INSERT_QUERY, insert_dicts)
 
-        # 성공한 article_id만 큐에서 삭제
+        # 성공한 article_id만 큐에서 삭제 (실패한 건 queue에 유지되어 다음 실행에서 재처리)
         if successful_ids:
-            print(f"[DELETE] Removing {len(successful_ids)} articles from queue...")
+            print(f"[DELETE] Removing {len(successful_ids)} successfully processed articles from queue...")
             delete_query = text("DELETE FROM article_queue WHERE article_id IN :ids").bindparams(
                 bindparam("ids", expanding=True)
             )
