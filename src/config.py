@@ -51,16 +51,25 @@ def get_metadata(sql=False) -> str:
     """
 
 def update_model_config_query():
-    update_sql = f"""
+    """파라미터화된 쿼리로 SQL Injection 방어"""
+    update_sql = """
     UPDATE llm_config_metadata
     SET
-        llm_model='{LLM_MODEL}',
-        embedding_model='{EMBEDDING_MODEL}',
-        embedding_size={EMBEDDING_SIZE},
-        chunk_size={CHUNK_SIZE};
+        llm_model = :llm_model,
+        embedding_model = :embedding_model,
+        embedding_size = :embedding_size,
+        chunk_size = :chunk_size
     """
-    
-    insert_sql = f"""
+
+    update_params = {
+        'llm_model': LLM_MODEL,
+        'embedding_model': EMBEDDING_MODEL,
+        'embedding_size': EMBEDDING_SIZE,
+        'chunk_size': CHUNK_SIZE,
+    }
+
+    # INSERT 쿼리는 파라미터가 필요 없음 (SELECT from article)
+    insert_sql = """
     INSERT IGNORE INTO article_queue (
         article_id,
         blog_id,
@@ -98,10 +107,10 @@ def update_model_config_query():
         created_at,
         updated_at,
         published_at
-    FROM article;
+    FROM article
     """
 
-    return update_sql, insert_sql
+    return update_sql, update_params, insert_sql
 
 def build_get_queue_query(table_name: str) -> str:
     query = f"""

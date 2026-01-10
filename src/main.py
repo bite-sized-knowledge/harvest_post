@@ -121,9 +121,9 @@ async def lambda_handler_async():
     # LLM Model | Embedding Model | Metadata Update
     if code_metadata != sql_metadata:
         print("[LLM Config] Updating...")
-        update_query, insert_query = update_model_config_query()
-        conn._raw_execute(update_query)
-        conn._raw_execute(insert_query)
+        update_query, update_params, insert_query = update_model_config_query()
+        conn.session_execute(update_query, update_params)
+        conn.session_execute(insert_query)
 
     print("[FETCH] Getting articles from queue...")
     queued = conn.execute(QUEUE_QUERY)
