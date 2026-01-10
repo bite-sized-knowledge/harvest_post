@@ -8,6 +8,7 @@ from config import INSERT_QUERY, QUEUE_QUERY, COLUMN_NAMES, get_metadata, update
 from response import HTTPResponse
 from llm_pipeline import LangChainModel
 from preprocessing import BlogPostProcessor, parse_article_text_from_html
+from errors import ProcessingError, ErrorCategory, ErrorSeverity, classify_exception
 from sqlalchemy.sql import text, bindparam
 
 # Concurrency limits
@@ -81,8 +82,16 @@ async def process_article(data):
         return values, article_id
 
     except Exception as e:
-        print(f"[ERROR] Article ID: {article_id} - {str(e)}")
-        return None
+        category, severity = classify_exception(e, context="article_processing")
+        error = ProcessingError(
+            article_id=article_id,
+            category=category,
+            severity=severity,
+            message=str(e),
+            original_exception=e
+        )
+        print(f"[ERROR] {error}")
+        return error
 
 
 async def process_embedding(row: dict, embedder: TextEmbeddings) -> dict:
@@ -139,10 +148,18 @@ async def lambda_handler_async():
 
         insert_rows = []
         successful_ids = []
+        processing_errors = []
 
         for result in results:
             if isinstance(result, Exception):
                 print(f"[ERROR] Task exception: {result}")
+                continue
+            if isinstance(result, ProcessingError):
+                processing_errors.append(result)
+                if result.is_retryable:
+                    print(f"[RETRY-LATER] {result.article_id} will be retried (transient error)")
+                else:
+                    print(f"[SKIP] {result.article_id} skipped (permanent error)")
                 continue
             if result:
                 values, article_id = result
