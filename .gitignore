@@ -167,5 +167,8 @@ cython_debug/
 #.idea/
 
 
-.claude/
+.claude*
 local_build.sh
+
+# Analysis docs (local only)
+docs/
