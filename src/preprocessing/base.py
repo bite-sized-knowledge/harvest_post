@@ -100,8 +100,33 @@ def clean_html(html: str) -> str:
 
 
 class BlogPostProcessor:
-    def __init__(self):
+    # 짧은 라인이라도 보존해야 할 패턴들
+    PRESERVE_SHORT_PATTERNS = [
+        re.compile(r'^\d+\.'),           # 번호 목록 (1., 2., ...)
+        re.compile(r'^[가-힣]{2,}:'),    # 한글 레이블 (예: 결론:)
+        re.compile(r'^[A-Z][a-z]+:'),    # 영문 레이블 (예: Note:)
+        re.compile(r'^\*\s'),            # 불릿 포인트
+        re.compile(r'^-\s'),             # 대시 목록
+        re.compile(r'^•\s'),             # 불릿 기호
+    ]
+
+    MIN_LINE_LENGTH = 10
+
+    def __init__(self, min_line_length: int = 10):
         self.noise_patterns = [re.compile(p, re.I) for p in NOISE_PATTERNS]
+        self.min_line_length = min_line_length
+
+    def _should_preserve_line(self, line: str) -> bool:
+        """짧은 라인 중 보존해야 하는지 판단"""
+        if len(line) > self.min_line_length:
+            return True
+
+        # 특정 패턴은 짧아도 보존
+        for pattern in self.PRESERVE_SHORT_PATTERNS:
+            if pattern.match(line):
+                return True
+
+        return False
 
     def process(self, text: str) -> str:
         if not text:
@@ -128,7 +153,7 @@ class BlogPostProcessor:
         text = re.split(r'about the author', text, flags=re.I)[0]
 
         lines = [line.strip() for line in text.split('\n') if line.strip()]
-        lines = [line for line in lines if len(line) > 10]
+        lines = [line for line in lines if self._should_preserve_line(line)]
         text = ' '.join(lines)
 
         text = re.sub(r'\s+', ' ', text).strip()
