@@ -1,4 +1,6 @@
 import os
+from dataclasses import dataclass
+
 
 # ---------- Table Configuration ----------
 ARTICLE_TABLE = os.getenv('ARTICLE_TABLE')
@@ -7,12 +9,34 @@ if not ARTICLE_TABLE:
     raise ValueError("Environment variable 'ARTICLE_TABLE' is not set.")
 
 
-# ---------- LLM Metadata Configuration ----------
+# ---------- LLM Configuration (Single Source of Truth) ----------
+@dataclass(frozen=True)
+class LLMConfig:
+    """LLM 관련 설정 - 모든 LLM 설정은 여기서 관리"""
+    model: str = "gpt-5-nano"
+    temperature: float = 0.3
+    max_tokens: int = 4096
+    timeout: int = 60
+    max_retries: int = 3
 
-LLM_MODEL = "gpt-5-nano"
-EMBEDDING_MODEL = "titan-embed-text-v2"
-EMBEDDING_SIZE = 512
-CHUNK_SIZE=5000
+
+@dataclass(frozen=True)
+class EmbeddingConfig:
+    """임베딩 관련 설정"""
+    model: str = "titan-embed-text-v2"
+    size: int = 512
+    chunk_size: int = 5000
+
+
+# 전역 설정 인스턴스
+LLM_CONFIG = LLMConfig()
+EMBEDDING_CONFIG = EmbeddingConfig()
+
+# 기존 호환성 유지
+LLM_MODEL = LLM_CONFIG.model
+EMBEDDING_MODEL = EMBEDDING_CONFIG.model
+EMBEDDING_SIZE = EMBEDDING_CONFIG.size
+CHUNK_SIZE = EMBEDDING_CONFIG.chunk_size
 
 os.environ['EMBEDDING_SIZE'] = str(EMBEDDING_SIZE)
 os.environ['CHUNK_SIZE'] = str(CHUNK_SIZE)

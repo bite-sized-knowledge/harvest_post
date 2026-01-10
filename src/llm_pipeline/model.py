@@ -2,31 +2,36 @@ import yaml
 import re
 import json
 import asyncio
+import sys
+import os
+
+# config 모듈 경로 추가
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import LLM_CONFIG
+
 from langchain_openai import ChatOpenAI
-from langchain_aws import ChatBedrockConverse
 from langchain_core.runnables import RunnableLambda
 from .prompt_generator import PromptGenerator
 from .schemas import TopicClassification
 
 
 class LangChainModel:
-    # Retry configuration
-    MAX_RETRIES = 3
+    # Retry configuration from LLM_CONFIG
+    MAX_RETRIES = LLM_CONFIG.max_retries
     RETRY_DELAY_BASE = 1.0  # seconds
     RETRY_DELAY_MAX = 10.0  # seconds
 
     def __init__(self):
-        OPENAI_LLM_MODEL = "gpt-5-nano"
-
         with open('prompt.yml') as f:
             self.prompt_data = yaml.safe_load(f)
 
         self.prompt_generator = PromptGenerator(self.prompt_data)
 
+        # 설정을 config에서 가져옴 (Single Source of Truth)
         self.model = ChatOpenAI(
-            model_name=OPENAI_LLM_MODEL,
-            temperature=0.3,
-            timeout=60,
+            model_name=LLM_CONFIG.model,
+            temperature=LLM_CONFIG.temperature,
+            timeout=LLM_CONFIG.timeout,
         )
 
     def _safe_parser(self):
