@@ -14,7 +14,7 @@ if not ARTICLE_TABLE:
 class LLMConfig:
     """LLM 관련 설정 - 모든 LLM 설정은 여기서 관리"""
     model: str = "gpt-5-nano"
-    temperature: float = 0.3
+    temperature: float = 1
     max_tokens: int = 4096
     timeout: int = 60
     max_retries: int = 3
