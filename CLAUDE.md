@@ -5,7 +5,7 @@
 
 ## Tech Stack
 - Python 3.11, AWS Lambda, LangChain
-- LLM: OpenAI GPT-5-nano (temperature=1 only, timeout=60s)
+- LLM: OpenAI GPT-5-nano (temperature=1 only)
 - Embedding: AWS Bedrock Titan Embed Text v2
 - Vector DB: Qdrant
 - Database: MySQL (SQLAlchemy)

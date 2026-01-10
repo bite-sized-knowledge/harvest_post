@@ -31,7 +31,6 @@ class LangChainModel:
         self.model = ChatOpenAI(
             model_name=LLM_CONFIG.model,
             temperature=LLM_CONFIG.temperature,
-            timeout=LLM_CONFIG.timeout,
         )
 
     def _safe_parser(self):
