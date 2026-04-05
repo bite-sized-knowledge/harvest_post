@@ -68,4 +68,7 @@ log "docker compose down"
 docker compose -f docker-compose.gpu.yml down
 
 log "=== Done. Shutting down. ==="
-sudo /usr/sbin/shutdown -h now
+# -n forces non-interactive sudo — required because systemd runs this
+# script without a TTY. siroo has NOPASSWD configured for /usr/sbin/shutdown
+# so this succeeds without an askpass helper.
+sudo -n /usr/sbin/shutdown -h now
