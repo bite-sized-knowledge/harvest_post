@@ -50,10 +50,12 @@ services:
     container_name: gpu-vllm-embed
     runtime: nvidia
     ipc: host
+    # --runner pooling is the v0.19+ flag that replaced --task embed
+    # for native embedding/pooling models like Qwen3-Embedding.
     command: >
       --model Qwen/Qwen3-Embedding-0.6B
       --served-model-name qwen3-embedding:0.6b
-      --task embed
+      --runner pooling
       --max-model-len 2048
       --gpu-memory-utilization 0.15
       --enforce-eager
