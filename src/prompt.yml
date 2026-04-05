@@ -1,43 +1,23 @@
 role: "professional text classification AI agent"
 
 instruction: >
-  You are a highly capable structured-output AI agent trained to analyze raw HTML articles.
-  Your role is to extract clean, structured metadata with high precision and strict adherence to schema constraints.
-  Follow all instructions exactly. Do not hallucinate, summarize, or invent data.
+  You are a highly capable classification AI. Your role is to classify tech blog articles
+  into categories, extract keywords, and detect language. Respond ONLY with valid JSON.
 
 system_message: >
-  You are an expert-level information extractor designed to operate on noisy and unstructured HTML content.
-  Think step-by-step to identify relevant sections and classify them into structured fields.
+  You are a tech article classifier. Analyze the given article and return structured JSON.
+  Do NOT include any explanation or thinking. Return ONLY the JSON object.
 
 tasks:
 
   content:
     instruction: >
-      Carefully extract only the **main content body** from noisy HTML.
-      Think step-by-step: remove irrelevant sections, then clean residual HTML tags, then preserve full paragraphs.
-      DO NOT summarize. DO NOT rewrite. DO NOT paraphrase.
-      You MUST preserve all original words, sentence structures, and order.
-
-    exclude:
-      - metadata
-      - title
-      - author
-      - tags
-      - categories
-      - comments
-      - related articles
-      - code blocks
-      - HTML tags
-      - emojis
-      - LaTeX
-      - ads
-      - navigation elements
+      NOT USED - content is handled by preprocessing pipeline.
+    exclude: []
 
   focusing:
     instruction: >
-      Assign one and only one topic from the fixed list.
-      Think critically: which category best fits the central theme of the article?
-      If ambiguous, follow the fallback.
+      Assign one and only one topic from the fixed list based on the article's central theme.
 
     categories:
       - "Frontend"
@@ -61,7 +41,6 @@ tasks:
     count: 3
     instruction: >
       Extract **exactly 3** clear, distinct, and meaningful keywords based on core content.
-      Think step-by-step: identify technical or conceptual terms, exclude vague/filler terms, ensure uniqueness.
 
     exclusions:
       - company and product names (e.g., "삼성", "Slack")
@@ -69,28 +48,35 @@ tasks:
       - adjectives or filler words
       - duplicates or semantically similar keywords
 
-  lang:
+  quality_score:
     instruction: >
-      Detect the **dominant language** of the main content. Choose only one from:
-        - "ko": if 70%+ is Korean
-        - "en": if 70%+ is English
-      In mixed cases, return the language that better represents the technical substance.
+      Rate the article's value to a technical reader on an integer scale from 1 to 5.
+      Focus on whether an engineer would find the content substantive and informative.
+      Return exactly ONE integer between 1 and 5 inclusive.
 
-    options:
-      - "ko"
-      - "en"
+    rubric:
+      - "5: In-depth technical content. Architecture deep-dives, postmortems, research, benchmarks, detailed implementation walk-throughs, production lessons learned."
+      - "4: Solid technical blog post. Tutorials, how-tos, tool introductions, meaningful engineering discussions, conference session write-ups."
+      - "3: Shallow or introductory technical content. Brief announcements with some technical substance, short tips, minor updates. Borderline acceptable."
+      - "2: Mostly non-technical. Event/job/recruitment announcements with company framing, product marketing with minor technical mention, thin company culture posts."
+      - "1: Unusable. Pure promotional content (coupons, sales, giveaways), empty/placeholder pages, tag index pages, broken extractions (missing title or body), spam."
+
+    guidance:
+      - "If the title is empty or missing, score 1."
+      - "If the content is a tag listing, search result, or navigation page (not an actual article), score 1."
+      - "If the content is primarily a conference session video embed with a clear descriptive title (e.g., 'DEVIEW 2024: 대규모 트래픽 처리'), score at least 4 based on the title/description — do not penalize short text when the content is video-centric."
+      - "Tech retrospectives about commerce features (coupon systems, discount engines, pricing) are NOT promotional — they are score 4-5 engineering content."
+      - "Recruitment posts that describe actual engineering work (team architecture, stack, projects) are score 3; pure 'we are hiring' posts are score 2."
 
 output:
   format: JSON
   schema:
-    content: string
     focusing: string
     keywords: list[string] (length must be 3)
-    lang: one of ["ko", "en"]
+    quality_score: integer (1 to 5)
 
 error_handling:
   fallback_values:
-    content: "N/A"
     focusing: "etc"
     keywords: ["N/A", "N/A", "N/A"]
-    lang: "ko"
+    quality_score: 3

@@ -20,16 +20,19 @@ class Category(Enum):
 
 
 class TopicClassification(BaseModel):
-    content: str = Field(description="Cleaned main content of the article.")
     focusing: Category = Field(description="One of the predefined categories.")
     keywords: List[str] = Field(
         min_items=3,
         max_items=3,
         description="Exactly 3 keywords."
     )
-    lang: str = Field(
-        pattern="^(ko|en)$",
-        description="Primary language of the content."
+    quality_score: int = Field(
+        ge=1,
+        le=5,
+        description=(
+            "Quality rating from 1 (unusable/promo/empty) to 5 (deep technical post). "
+            "Articles scoring below the rejection threshold are moved to article_rejected."
+        ),
     )
 
     @validator('focusing', pre=True)
@@ -56,3 +59,17 @@ class TopicClassification(BaseModel):
         if isinstance(v, str) and v in mapping:
             return mapping[v]
         raise ValueError(f"Invalid focusing value: {v}")
+
+    @validator('quality_score', pre=True)
+    def coerce_quality_score(cls, v):
+        if isinstance(v, bool):
+            raise ValueError("quality_score must be an integer, got bool")
+        if isinstance(v, int):
+            return v
+        if isinstance(v, float):
+            return int(round(v))
+        if isinstance(v, str):
+            stripped = v.strip()
+            if stripped.isdigit():
+                return int(stripped)
+        raise ValueError(f"Invalid quality_score: {v!r}")

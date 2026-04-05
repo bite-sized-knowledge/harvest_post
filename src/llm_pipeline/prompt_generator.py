@@ -17,30 +17,38 @@ class PromptGenerator:
 
     def _build_instruction_text(self) -> str:
         g = self.prompt_data["tasks"]
-        return "\n".join([
-            "Your task is to extract structured information from a noisy HTML article.",
-            "Strictly follow the schema and instructions. Think step-by-step and do not hallucinate.",
+        lines = [
+            "Classify the given tech article. Return ONLY a JSON object with these fields:",
             "",
-            "1. Content Extraction:",
-            f"- {g['content']['instruction']}",
-            f"- Exclude: {', '.join(g['content']['exclude'])}",
-            "",
-            "2. Topic Classification:",
+            "1. Topic Classification (focusing):",
             f"- {g['focusing']['instruction']}",
             f"- Categories: {' | '.join(g['focusing']['categories'])}",
             f"- Fallback: {g['focusing']['fallback'][0]}",
             "",
-            "3. Keywords:",
+            "2. Keywords:",
             f"- {g['keywords']['instruction']}",
             f"- Exclude: {', '.join(g['keywords']['exclusions'])}",
-            "",
-            "4. Language Detection:",
-            f"- {g['lang']['instruction']}",
-            f"- Options: {', '.join(g['lang']['options'])}",
+        ]
+
+        if "quality_score" in g:
+            q = g["quality_score"]
+            lines.extend([
+                "",
+                "3. Quality Score (quality_score):",
+                f"- {q['instruction']}",
+                "- Rubric:",
+            ])
+            lines.extend([f"  * {line}" for line in q.get("rubric", [])])
+            if q.get("guidance"):
+                lines.append("- Guidance:")
+                lines.extend([f"  * {line}" for line in q["guidance"]])
+
+        lines.extend([
             "",
             "Respond in strict JSON format matching this schema:",
             self.format_instructions
         ])
+        return "\n".join(lines)
 
     def _make_template(self, instruction_prefix: str = "") -> PromptTemplate:
         full_instruction = f"{instruction_prefix.strip()}\n\n{self.instruction_text}" if instruction_prefix else self.instruction_text
