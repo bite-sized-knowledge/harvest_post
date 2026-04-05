@@ -161,8 +161,18 @@ async def process_article(data):
             predict = await MODEL.predict(llm_query, False, False)
 
         if predict is None:
-            # Transient LLM failure — keep in queue for retry.
-            return None
+            # LLM returned unparseable output after 3 internal retries.
+            # This used to leave the row in article_queue for retry, but in
+            # practice identical inputs produce identical failures and the
+            # row got stuck forever. Route to article_rejected so the queue
+            # stays healthy; operators can recover via cmd/refetch_rejected
+            # if the model is later improved.
+            print(f"[REJECT] {article_id} — LLM extraction failed (None after retries)")
+            return _build_rejection(
+                data,
+                reason="llm_extraction_failed",
+                quality_score=1,
+            )
 
         # --- Post-LLM gate: quality score below threshold → reject terminally. ---
         if predict.quality_score < QUALITY_REJECT_THRESHOLD:
