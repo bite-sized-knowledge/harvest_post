@@ -37,11 +37,12 @@ git pull --rebase origin prod || log "WARN: git pull failed, continuing with exi
 sed -i 's/^DB_NAME=.*/DB_NAME=bite/' .env
 
 # --- 3. Bring up the stack (vllm-chat + vllm-embed + harvest-post) ---
-# docker-compose.gpu.yml's harvest-post has depends_on:{vllm-chat,vllm-embed}
-# with service_healthy conditions, so `up -d` blocks until vLLM instances
-# report healthy before starting harvest-post.
-log "docker compose up -d --build"
-docker compose -f docker-compose.gpu.yml up -d --build
+# vLLM instances take 2-3 minutes to load the model + KV cache on first
+# boot after a machine power cycle. The default depends_on wait tolerance
+# is too tight, so we pass --wait-timeout 600 (10 minutes) to give the
+# stack plenty of room to come healthy before harvest-post kicks off.
+log "docker compose up -d --build --wait --wait-timeout 600"
+docker compose -f docker-compose.gpu.yml up -d --build --wait --wait-timeout 600
 
 # --- 4. Wait for harvest-post container to exit ---
 # harvest-post CMD is `python3 -m main --continuous`, which exits after the
