@@ -7,7 +7,7 @@ import os
 
 # config 모듈 경로 추가
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import LLM_CONFIG
+from config import LLM_CONFIG, VLLM_BASE_URL
 
 from langchain_openai import ChatOpenAI
 from langchain_core.runnables import RunnableLambda
@@ -27,9 +27,11 @@ class LangChainModel:
 
         self.prompt_generator = PromptGenerator(self.prompt_data)
 
-        # 설정을 config에서 가져옴 (Single Source of Truth)
+        # vLLM OpenAI-compatible API 사용
         self.model = ChatOpenAI(
-            model_name=LLM_CONFIG.model,
+            model=LLM_CONFIG.model,
+            base_url=VLLM_BASE_URL,
+            api_key="not-needed",
             temperature=LLM_CONFIG.temperature,
         )
 
@@ -44,10 +46,8 @@ class LangChainModel:
         schema_keys = {'$defs', 'properties', 'enum', 'title', 'type', 'required', '$ref'}
         if not isinstance(obj, dict):
             return False
-        # 스키마 키가 있고 실제 데이터 키가 없으면 스키마
         has_schema_keys = bool(set(obj.keys()) & schema_keys)
         has_data_keys = bool({'content', 'focusing', 'keywords', 'lang'} & set(obj.keys()))
-        # 중첩된 스키마 확인 (Category 등)
         for v in obj.values():
             if isinstance(v, dict) and ('enum' in v or 'type' in v or '$ref' in v):
                 return True
@@ -55,14 +55,12 @@ class LangChainModel:
 
     def extract_json(self, text: str) -> dict:
         """텍스트에서 실제 데이터 JSON 추출 (스키마 정의 제외)"""
-        # greedy 매칭으로 가장 큰 JSON 찾기
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if not match:
             raise ValueError("No JSON object found in text.")
 
         json_str = match.group()
 
-        # 여러 JSON이 연결된 경우 분리 시도
         try:
             parsed = json.loads(json_str)
             if not self._is_schema(parsed):
@@ -70,8 +68,6 @@ class LangChainModel:
         except json.JSONDecodeError:
             pass
 
-        # 스키마가 포함된 경우, 텍스트에서 실제 데이터 JSON 패턴 찾기
-        # content, focusing, keywords, lang 키를 가진 JSON 찾기
         data_pattern = r'\{[^{}]*"content"\s*:[^{}]*"focusing"\s*:[^{}]*\}'
         data_match = re.search(data_pattern, text, re.DOTALL)
         if data_match:
@@ -80,7 +76,6 @@ class LangChainModel:
             except json.JSONDecodeError:
                 pass
 
-        # 마지막 시도: trailing comma 수정
         try:
             fixed = re.sub(r',\s*}', '}', json_str)
             fixed = re.sub(r',\s*]', ']', fixed)
@@ -138,7 +133,6 @@ class LangChainModel:
 
         chain = self.prompt_generator.prompt | self.model | self._safe_parser()
 
-        print("[INFO] Trying OpenAI chain...")
         result = await self._invoke_with_retry(chain, input_data)
 
         if result:

@@ -1,0 +1,98 @@
+# Self-hosted GPU stack for harvest_post.
+#
+# Layout:
+#   vllm-chat  — Qwen3.5-9B-AWQ, chat model, /v1/chat/completions on :8000
+#   vllm-embed — Qwen3-Embedding-0.6B, embedding model, /v1/embeddings on :8001
+#   harvest-post — Python batch job, talks to both vLLM instances via the
+#                  bridge network using DNS names (vllm-chat / vllm-embed).
+#
+# Both vLLM instances share the one local GPU. Memory utilization is split:
+#   chat:  0.55 → ~9GB on a 16GB 5060 Ti (AWQ-quantised 9B)
+#   embed: 0.15 → ~2GB (0.6B model)
+# Remaining ~5GB is headroom for CUDA kernels + overlap.
+#
+# HuggingFace cache is mounted from the host so models persist across
+# container restarts and survive `docker compose down -v`.
+
+services:
+  vllm-chat:
+    image: vllm/vllm-openai:latest
+    container_name: gpu-vllm-chat
+    runtime: nvidia
+    ipc: host
+    command: >
+      --model QuantTrio/Qwen3.5-9B-AWQ
+      --served-model-name qwen3.5:9b
+      --max-model-len 8192
+      --gpu-memory-utilization 0.55
+      --quantization awq_marlin
+      --enforce-eager
+      --chat-template /app/chat_template_nothink.jinja
+      --port 8000
+      --host 0.0.0.0
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ./chat_template_nothink.jinja:/app/chat_template_nothink.jinja:ro
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 90s
+    restart: unless-stopped
+    networks:
+      - gpu-network
+
+  vllm-embed:
+    image: vllm/vllm-openai:latest
+    container_name: gpu-vllm-embed
+    runtime: nvidia
+    ipc: host
+    command: >
+      --model Qwen/Qwen3-Embedding-0.6B
+      --served-model-name qwen3-embedding:0.6b
+      --task embed
+      --max-model-len 2048
+      --gpu-memory-utilization 0.15
+      --enforce-eager
+      --port 8001
+      --host 0.0.0.0
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - gpu-network
+
+  harvest-post:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    image: harvest-post:local
+    container_name: gpu-harvest-post
+    env_file:
+      - .env
+    environment:
+      - VLLM_BASE_URL=http://vllm-chat:8000/v1
+      - VLLM_EMBED_BASE_URL=http://vllm-embed:8001/v1
+    depends_on:
+      vllm-chat:
+        condition: service_healthy
+      vllm-embed:
+        condition: service_healthy
+    networks:
+      - gpu-network
+    restart: "no"
+
+networks:
+  gpu-network:
+    driver: bridge

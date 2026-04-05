@@ -1,27 +1,24 @@
 # 필수 유틸
-python-dotenv==1.0.1
+python-dotenv>=1.0.0
 
 # 데이터 처리
-numpy==1.24.4
-pandas==2.1.4
-sqlalchemy==2.0.25
-pymysql==1.1.0
+numpy>=1.26.0,<2
+pandas>=2.1.0
+sqlalchemy>=2.0.0
+pymysql>=1.1.1
 
 # 웹 크롤링
-beautifulsoup4==4.12.3
-lxml==4.9.3
-trafilatura==1.6.1
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+trafilatura>=1.6.0
 
-# LLM - 버전 호환성 고정
-langchain==0.3.14
-langchain-core==0.3.29
-langchain-text-splitters==0.3.4
-langchain-openai==0.2.14
-langchain-aws==0.2.10
-pydantic==2.10.4
+# LLM — both chat and embedding served via vLLM's OpenAI-compatible API
+langchain>=0.3.0
+langchain-core>=0.3.81
+langchain-text-splitters>=0.3.9
+langchain-openai>=0.2.0
+pydantic>=2.0.0
+requests>=2.31.0
 
 # Vector DB
-qdrant-client==1.16.2
-
-# AWS
-boto3==1.35.86
+qdrant-client>=1.16.0

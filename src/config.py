@@ -17,8 +17,10 @@ QUALITY_REJECT_THRESHOLD = int(os.getenv('QUALITY_REJECT_THRESHOLD', 3))
 
 
 # ---------- Inference Server Configuration ----------
-OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
-VLLM_BASE_URL = os.getenv('VLLM_BASE_URL', 'http://localhost:8000/v1')
+# Two separate vLLM instances: one for chat (LLM classifier), one for embedding.
+# Both speak the OpenAI-compatible /v1 API.
+VLLM_BASE_URL = os.getenv('VLLM_BASE_URL', 'http://vllm-chat:8000/v1')
+VLLM_EMBED_BASE_URL = os.getenv('VLLM_EMBED_BASE_URL', 'http://vllm-embed:8001/v1')
 
 
 # ---------- LLM Configuration (Single Source of Truth) ----------

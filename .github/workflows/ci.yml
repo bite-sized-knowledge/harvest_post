@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [prod, dev]
+  pull_request:
+    branches: [prod]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install validation deps
+        run: pip install pyyaml
+
+      - name: Syntax check Python sources
+        run: |
+          python -m compileall -q src scripts
+
+      - name: Validate prompt.yml
+        run: |
+          python -c "import yaml; yaml.safe_load(open('src/prompt.yml'))"
+
+      - name: Validate docker-compose.gpu.yml
+        run: |
+          # env_file points at .env which is gitignored — provide an empty
+          # stub so `docker compose config` succeeds on the syntax check.
+          touch .env
+          docker compose -f docker-compose.gpu.yml config --quiet
