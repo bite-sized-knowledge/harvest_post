@@ -1,0 +1,31 @@
+[Unit]
+Description=Harvest Post - Blog Article Processing via Local LLM
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=siroo
+WorkingDirectory=/home/siroo/harvest_post
+ExecStart=/home/siroo/harvest_post/run.sh
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=3600
+
+# DB credentials — used by scripts/sync_bite_to_dev.py and by the
+# harvest-post container (via .env merging). vLLM endpoint URLs are NOT
+# set here: they belong to the container network and are configured in
+# docker-compose.gpu.yml's `environment:` section.
+Environment=ARTICLE_TABLE=article
+Environment=DB_HOST=192.168.219.104
+Environment=DB_PORT=3306
+Environment=DB_USER=bite-dev
+Environment=DB_PASSWORD=qkdlxm!
+Environment=DB_NAME=bite
+Environment=QDRANT_HOST=http://192.168.219.104
+Environment=QDRANT_PROD_PORT=6333
+Environment=QDRANT_DEV_PORT=6335
+Environment=LIMIT=50
+
+[Install]
+WantedBy=multi-user.target
