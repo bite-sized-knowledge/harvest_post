@@ -17,6 +17,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install validation deps
+        run: pip install pyyaml
+
       - name: Syntax check Python sources
         run: |
           python -m compileall -q src scripts
