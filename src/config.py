@@ -1,28 +1,40 @@
 import os
 from dataclasses import dataclass
+from dotenv import load_dotenv
 
+load_dotenv()
 
 # ---------- Table Configuration ----------
 ARTICLE_TABLE = os.getenv('ARTICLE_TABLE')
 QUEUED_TABLE = "article_queue"
+REJECTED_TABLE = "article_rejected"
 if not ARTICLE_TABLE:
     raise ValueError("Environment variable 'ARTICLE_TABLE' is not set.")
+
+# Articles with LLM quality_score strictly below this threshold are moved to
+# article_rejected instead of being inserted into article.
+QUALITY_REJECT_THRESHOLD = int(os.getenv('QUALITY_REJECT_THRESHOLD', 3))
+
+
+# ---------- Inference Server Configuration ----------
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+VLLM_BASE_URL = os.getenv('VLLM_BASE_URL', 'http://localhost:8000/v1')
 
 
 # ---------- LLM Configuration (Single Source of Truth) ----------
 @dataclass(frozen=True)
 class LLMConfig:
     """LLM 관련 설정 - 모든 LLM 설정은 여기서 관리"""
-    model: str = "gpt-5-nano"
-    temperature: float = 1
+    model: str = "qwen3.5:9b"
+    temperature: float = 0.1
     max_retries: int = 3
 
 
 @dataclass(frozen=True)
 class EmbeddingConfig:
     """임베딩 관련 설정"""
-    model: str = "titan-embed-text-v2"
-    size: int = 512
+    model: str = "qwen3-embedding:0.6b"
+    size: int = 1024
     chunk_size: int = 5000
 
 
@@ -147,10 +159,10 @@ def build_get_queue_query(table_name: str) -> str:
             published_at,
             created_at,
             updated_at
-        FROM 
+        FROM
             {table_name}
         ORDER BY RAND()
-        LIMIT {os.getenv('LIMIT', 10)} 
+        LIMIT {os.getenv('LIMIT', 10)}
         """
 
     # if os.getenv('ENVIRONMENT') == "dev":
@@ -175,3 +187,15 @@ def build_get_queue_query(table_name: str) -> str:
 
 QUEUE_QUERY = build_get_queue_query(QUEUED_TABLE)
 INSERT_QUERY = build_upsert_query(ARTICLE_TABLE, COLUMN_NAMES, UPSERT_COLUMNS)
+
+REJECTED_COLUMNS = [
+    'article_id', 'blog_id', 'url', 'title', 'thumbnail',
+    'description', 'content', 'content_length', 'lang', 'published_at',
+    'quality_score', 'reject_reason',
+]
+
+REJECTED_INSERT_QUERY = (
+    f"INSERT IGNORE INTO {REJECTED_TABLE} "
+    f"({', '.join(REJECTED_COLUMNS)}) "
+    f"VALUES ({', '.join([f':{c}' for c in REJECTED_COLUMNS])})"
+)
