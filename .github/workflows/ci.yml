@@ -30,4 +30,7 @@ jobs:
 
       - name: Validate docker-compose.gpu.yml
         run: |
+          # env_file points at .env which is gitignored — provide an empty
+          # stub so `docker compose config` succeeds on the syntax check.
+          touch .env
           docker compose -f docker-compose.gpu.yml config --quiet
