@@ -20,21 +20,24 @@ services:
     container_name: gpu-vllm-chat
     runtime: nvidia
     ipc: host
-    # Memory budget on 16GB RTX 5060 Ti:
-    #   Qwen3.5-9B-AWQ weights   : ~5.5GB
-    #   KV cache @ 6144 ctx len  : ~3.2GB
-    #   vLLM workspace + CUDA    : ~1.5GB
-    #   Total                    : ~10.2GB ≈ 0.63 of 16GB
-    # We ask for 0.70 to leave headroom while not starving vllm-embed
-    # (which gets 0.15 = ~2.4GB). Sum = 0.85 of 16GB, leaves ~2.4GB
-    # for CUDA context / kernels.
+    # Memory budget on 16GB RTX 5060 Ti (must coexist with vllm-embed 0.15):
+    #   Qwen2.5-7B-Instruct-AWQ weights : ~5GB (measured: vLLM reports ~8GB
+    #                                     with bookkeeping/workspace)
+    #   KV cache @ 4096 ctx len         : ~1.5GB
+    #   Profile / activation peak       : ~1GB
+    #   Total                           : ~10.5GB ≈ 0.65 of 16GB
+    #
+    # NOTE: We tried Qwen3.5-9B-AWQ first but `Model loading took 11.21 GiB`
+    # alone, leaving no room for KV cache + the 2.5GB embed instance needed.
+    # 7B AWQ fits comfortably with plenty of headroom.
     command: >
-      --model QuantTrio/Qwen3.5-9B-AWQ
-      --served-model-name qwen3.5:9b
-      --max-model-len 6144
-      --gpu-memory-utilization 0.70
+      --model Qwen/Qwen2.5-7B-Instruct-AWQ
+      --served-model-name qwen2.5:7b
+      --max-model-len 4096
+      --gpu-memory-utilization 0.65
       --quantization awq_marlin
       --enforce-eager
+      --max-num-seqs 8
       --chat-template /app/chat_template_nothink.jinja
       --port 8000
       --host 0.0.0.0
