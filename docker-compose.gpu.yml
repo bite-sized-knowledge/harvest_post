@@ -18,13 +18,16 @@ services:
     container_name: gpu-vllm-chat
     runtime: nvidia
     ipc: host
-    # Qwen3.5-9B-AWQ: weights ~5.5GB, KV cache scales with context.
-    # gpu-memory-utilization=0.80 → reserves ~12.8GB out of 16GB.
-    # vLLM auto-determines max context length from remaining memory
-    # after loading weights (typically ~32K tokens for this model).
+    # Qwen3.5-9B-AWQ: weights ~5.5GB steady state.
+    # gpu-memory-utilization=0.80 → reserves ~12.8GB. After weights,
+    # ~7.3GB remains for KV cache. 32768 ctx * ~72KB/token = 2.3GB,
+    # leaving ~5GB headroom for workspace/activations.
+    # NOTE: max-model-len MUST be set explicitly because the model's
+    # native config says 262144 and vLLM 0.19 doesn't auto-clamp.
     command: >
       --model QuantTrio/Qwen3.5-9B-AWQ
       --served-model-name qwen3.5:9b
+      --max-model-len 32768
       --gpu-memory-utilization 0.80
       --quantization awq_marlin
       --enforce-eager
