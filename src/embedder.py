@@ -1,20 +1,20 @@
 import os
 import asyncio
-import requests
 from typing import List
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from numpy.linalg import norm
-from config import VLLM_EMBED_BASE_URL, EMBEDDING_CONFIG
+from config import EMBEDDING_CONFIG
 
 
 class TextEmbeddings:
-    """Embedding generator backed by a vLLM instance running an embedding
-    model (e.g. Qwen3-Embedding-0.6B) via the OpenAI-compatible
-    /v1/embeddings endpoint. Matryoshka-style dimension truncation and
-    optional L2 normalization are applied client-side so the same embeddings
-    pipeline works regardless of the underlying vLLM model."""
+    """In-process embedding using sentence-transformers on CPU.
 
-    separator = "\n\n###\n\n"  # 안정적인 구조화 구분자
+    The 0.6B Qwen3-Embedding model loads in ~2s and produces embeddings
+    in <1s per call on a modern CPU. This avoids a separate vLLM-embed
+    container (which would need GPU VRAM the 9B chat model needs).
+    """
+
+    separator = "\n\n###\n\n"
 
     def __init__(
         self,
@@ -22,8 +22,9 @@ class TextEmbeddings:
         chunk_size: int = None,
         chunk_overlap: int = 200
     ):
-        self.base_url = VLLM_EMBED_BASE_URL.rstrip("/")
-        self.model = model or EMBEDDING_CONFIG.model
+        from sentence_transformers import SentenceTransformer
+
+        self.model_name = model or EMBEDDING_CONFIG.model
         self.chunk_size = chunk_size or int(os.getenv("CHUNK_SIZE", 5000))
         self.chunk_overlap = chunk_overlap
         self.chunker = RecursiveCharacterTextSplitter(
@@ -31,35 +32,33 @@ class TextEmbeddings:
             chunk_overlap=self.chunk_overlap,
             separators=["\n\n", "\n", ".", " ", ""]
         )
+        # Lazy-load on first use so container startup isn't blocked.
+        self._model = None
+
+    def _get_model(self):
+        if self._model is None:
+            from sentence_transformers import SentenceTransformer
+            self._model = SentenceTransformer(
+                self.model_name,
+                device="cpu",
+                trust_remote_code=True,
+            )
+        return self._model
 
     def _embed_once(self, text: str, dimensions: int, normalize: bool) -> List[float]:
-        try:
-            response = requests.post(
-                f"{self.base_url}/embeddings",
-                json={
-                    "model": self.model,
-                    "input": text,
-                },
-                headers={"Authorization": "Bearer not-needed"},
-                timeout=300,
-            )
-            response.raise_for_status()
-            payload = response.json()
-            embeddings = payload["data"][0]["embedding"]
+        model = self._get_model()
+        embedding = model.encode(text, normalize_embeddings=False).tolist()
 
-            # 차원 truncate (Matryoshka 지원 모델)
-            if len(embeddings) > dimensions:
-                embeddings = embeddings[:dimensions]
+        # Matryoshka-style dimension truncation.
+        if len(embedding) > dimensions:
+            embedding = embedding[:dimensions]
 
-            if normalize:
-                l2 = norm(embeddings)
-                if l2 > 0:
-                    embeddings = [v / l2 for v in embeddings]
+        if normalize:
+            l2 = norm(embedding)
+            if l2 > 0:
+                embedding = [v / l2 for v in embedding]
 
-            return embeddings
-        except Exception as e:
-            print(f"[vLLMEmbedding] Failed to embed: {e}")
-            raise
+        return embedding
 
     async def embed_text(self, text: str, dimensions: int, normalize: bool = True) -> List[float]:
         chunks = self.chunker.split_text(text)

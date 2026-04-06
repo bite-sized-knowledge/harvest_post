@@ -20,7 +20,7 @@ services:
     command: >
       --model QuantTrio/Qwen3.5-9B-AWQ
       --served-model-name qwen3.5:9b
-      --max-model-len 32768
+      --max-model-len 22176
       --gpu-memory-utilization 0.95
       --quantization awq_marlin
       --enforce-eager
@@ -42,33 +42,6 @@ services:
     networks:
       - gpu-network
 
-  vllm-embed:
-    image: vllm/vllm-openai:latest
-    container_name: gpu-vllm-embed
-    # NO runtime: nvidia — runs on CPU only. 0.6B embedding model is
-    # small enough that CPU inference is fast (<1s per embedding call).
-    # This frees the entire GPU for the 9B chat model.
-    command: >
-      --model Qwen/Qwen3-Embedding-0.6B
-      --served-model-name qwen3-embedding:0.6b
-      --runner pooling
-      --device cpu
-      --port 8001
-      --host 0.0.0.0
-    volumes:
-      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
-    ports:
-      - "8001:8001"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 60s
-    restart: unless-stopped
-    networks:
-      - gpu-network
-
   harvest-post:
     build:
       context: .
@@ -79,11 +52,8 @@ services:
       - .env
     environment:
       - VLLM_BASE_URL=http://vllm-chat:8000/v1
-      - VLLM_EMBED_BASE_URL=http://vllm-embed:8001/v1
     depends_on:
       vllm-chat:
-        condition: service_healthy
-      vllm-embed:
         condition: service_healthy
     networks:
       - gpu-network
