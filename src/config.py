@@ -27,12 +27,7 @@ VLLM_EMBED_BASE_URL = os.getenv('VLLM_EMBED_BASE_URL', 'http://vllm-embed:8001/v
 @dataclass(frozen=True)
 class LLMConfig:
     """LLM 관련 설정 - 모든 LLM 설정은 여기서 관리"""
-    # Served-model-name must match docker-compose.gpu.yml's vllm-chat
-    # --served-model-name flag. Backing model is Qwen2.5-7B-Instruct-AWQ —
-    # we dropped from 9B to 7B because on the 16GB RTX 5060 Ti the 9B AWQ
-    # weights alone consume ~11GB of VRAM, leaving no room to co-host
-    # vllm-embed on the same GPU.
-    model: str = "qwen2.5:7b"
+    model: str = "qwen3.5:9b"
     temperature: float = 0.1
     max_retries: int = 3
 
