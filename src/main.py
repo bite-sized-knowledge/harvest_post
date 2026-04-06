@@ -201,9 +201,9 @@ async def process_article(data):
             final_content,
             len(final_content),
             lang,
-            published_at,
             created_at,
             updated_at,
+            published_at,
         )
 
         return values, article_id
