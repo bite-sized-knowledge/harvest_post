@@ -5,10 +5,9 @@
 #   vllm-embed — Qwen3-Embedding-0.6B on :8001 (vector embeddings)
 #   harvest-post — Python batch job
 #
-# STARTUP ORDER matters for VRAM: chat starts first and grabs 0.80 of 16GB
-# (~12.8GB for weights + KV cache). Only after chat is healthy does embed
-# start, fitting into the remaining ~3GB with its 0.15 reservation.
-# Simultaneous start caused CUDA OOM during chat's profiling phase.
+# VRAM budget: Qwen3.5-9B-AWQ needs ~14.4GB (weights + workspace) so it
+# gets the GPU exclusively at 0.95 utilization. The embedding model (0.6B)
+# runs on CPU — tiny enough that CPU inference is fast for our batch sizes.
 #
 # HuggingFace cache is mounted from host so models persist across restarts.
 
@@ -18,17 +17,11 @@ services:
     container_name: gpu-vllm-chat
     runtime: nvidia
     ipc: host
-    # Qwen3.5-9B-AWQ: weights ~5.5GB steady state.
-    # gpu-memory-utilization=0.80 → reserves ~12.8GB. After weights,
-    # ~7.3GB remains for KV cache. 32768 ctx * ~72KB/token = 2.3GB,
-    # leaving ~5GB headroom for workspace/activations.
-    # NOTE: max-model-len MUST be set explicitly because the model's
-    # native config says 262144 and vLLM 0.19 doesn't auto-clamp.
     command: >
       --model QuantTrio/Qwen3.5-9B-AWQ
       --served-model-name qwen3.5:9b
       --max-model-len 32768
-      --gpu-memory-utilization 0.80
+      --gpu-memory-utilization 0.95
       --quantization awq_marlin
       --enforce-eager
       --chat-template /app/chat_template_nothink.jinja
@@ -52,19 +45,14 @@ services:
   vllm-embed:
     image: vllm/vllm-openai:latest
     container_name: gpu-vllm-embed
-    runtime: nvidia
-    ipc: host
-    # Sequential start: embed waits for chat to be healthy first so
-    # chat can complete its VRAM-heavy profiling phase without contention.
-    depends_on:
-      vllm-chat:
-        condition: service_healthy
+    # NO runtime: nvidia — runs on CPU only. 0.6B embedding model is
+    # small enough that CPU inference is fast (<1s per embedding call).
+    # This frees the entire GPU for the 9B chat model.
     command: >
       --model Qwen/Qwen3-Embedding-0.6B
       --served-model-name qwen3-embedding:0.6b
       --runner pooling
-      --gpu-memory-utilization 0.15
-      --enforce-eager
+      --device cpu
       --port 8001
       --host 0.0.0.0
     volumes:
