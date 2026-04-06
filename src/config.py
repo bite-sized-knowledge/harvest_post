@@ -17,10 +17,9 @@ QUALITY_REJECT_THRESHOLD = int(os.getenv('QUALITY_REJECT_THRESHOLD', 3))
 
 
 # ---------- Inference Server Configuration ----------
-# Two separate vLLM instances: one for chat (LLM classifier), one for embedding.
-# Both speak the OpenAI-compatible /v1 API.
+# Chat LLM: vLLM with Qwen3.5-9B-AWQ on GPU (OpenAI-compatible /v1 API).
+# Embedding: in-process sentence-transformers on CPU (no server needed).
 VLLM_BASE_URL = os.getenv('VLLM_BASE_URL', 'http://vllm-chat:8000/v1')
-VLLM_EMBED_BASE_URL = os.getenv('VLLM_EMBED_BASE_URL', 'http://vllm-embed:8001/v1')
 
 
 # ---------- LLM Configuration (Single Source of Truth) ----------
@@ -35,7 +34,7 @@ class LLMConfig:
 @dataclass(frozen=True)
 class EmbeddingConfig:
     """임베딩 관련 설정"""
-    model: str = "qwen3-embedding:0.6b"
+    model: str = "Qwen/Qwen3-Embedding-0.6B"
     size: int = 1024
     chunk_size: int = 5000
 
