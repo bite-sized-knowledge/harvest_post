@@ -1,18 +1,16 @@
 # Self-hosted GPU stack for harvest_post.
 #
 # Layout:
-#   vllm-chat  — Qwen3.5-9B-AWQ, chat model, /v1/chat/completions on :8000
-#   vllm-embed — Qwen3-Embedding-0.6B, embedding model, /v1/embeddings on :8001
-#   harvest-post — Python batch job, talks to both vLLM instances via the
-#                  bridge network using DNS names (vllm-chat / vllm-embed).
+#   vllm-chat  — Qwen3.5-9B-AWQ on :8000 (LLM classification + quality scoring)
+#   vllm-embed — Qwen3-Embedding-0.6B on :8001 (vector embeddings)
+#   harvest-post — Python batch job
 #
-# Both vLLM instances share the one local GPU. Memory utilization is split:
-#   chat:  0.55 → ~9GB on a 16GB 5060 Ti (AWQ-quantised 9B)
-#   embed: 0.15 → ~2GB (0.6B model)
-# Remaining ~5GB is headroom for CUDA kernels + overlap.
+# STARTUP ORDER matters for VRAM: chat starts first and grabs 0.80 of 16GB
+# (~12.8GB for weights + KV cache). Only after chat is healthy does embed
+# start, fitting into the remaining ~3GB with its 0.15 reservation.
+# Simultaneous start caused CUDA OOM during chat's profiling phase.
 #
-# HuggingFace cache is mounted from the host so models persist across
-# container restarts and survive `docker compose down -v`.
+# HuggingFace cache is mounted from host so models persist across restarts.
 
 services:
   vllm-chat:
@@ -20,24 +18,16 @@ services:
     container_name: gpu-vllm-chat
     runtime: nvidia
     ipc: host
-    # Memory budget on 16GB RTX 5060 Ti (must coexist with vllm-embed 0.15):
-    #   Qwen2.5-7B-Instruct-AWQ weights : ~5GB (measured: vLLM reports ~8GB
-    #                                     with bookkeeping/workspace)
-    #   KV cache @ 4096 ctx len         : ~1.5GB
-    #   Profile / activation peak       : ~1GB
-    #   Total                           : ~10.5GB ≈ 0.65 of 16GB
-    #
-    # NOTE: We tried Qwen3.5-9B-AWQ first but `Model loading took 11.21 GiB`
-    # alone, leaving no room for KV cache + the 2.5GB embed instance needed.
-    # 7B AWQ fits comfortably with plenty of headroom.
+    # Qwen3.5-9B-AWQ: weights ~5.5GB, KV cache scales with context.
+    # gpu-memory-utilization=0.80 → reserves ~12.8GB out of 16GB.
+    # vLLM auto-determines max context length from remaining memory
+    # after loading weights (typically ~32K tokens for this model).
     command: >
-      --model Qwen/Qwen2.5-7B-Instruct-AWQ
-      --served-model-name qwen2.5:7b
-      --max-model-len 4096
-      --gpu-memory-utilization 0.65
+      --model QuantTrio/Qwen3.5-9B-AWQ
+      --served-model-name qwen3.5:9b
+      --gpu-memory-utilization 0.80
       --quantization awq_marlin
       --enforce-eager
-      --max-num-seqs 8
       --chat-template /app/chat_template_nothink.jinja
       --port 8000
       --host 0.0.0.0
@@ -51,7 +41,7 @@ services:
       interval: 15s
       timeout: 5s
       retries: 40
-      start_period: 90s
+      start_period: 120s
     restart: unless-stopped
     networks:
       - gpu-network
@@ -61,13 +51,15 @@ services:
     container_name: gpu-vllm-embed
     runtime: nvidia
     ipc: host
-    # --runner pooling is the v0.19+ flag that replaced --task embed
-    # for native embedding/pooling models like Qwen3-Embedding.
+    # Sequential start: embed waits for chat to be healthy first so
+    # chat can complete its VRAM-heavy profiling phase without contention.
+    depends_on:
+      vllm-chat:
+        condition: service_healthy
     command: >
       --model Qwen/Qwen3-Embedding-0.6B
       --served-model-name qwen3-embedding:0.6b
       --runner pooling
-      --max-model-len 2048
       --gpu-memory-utilization 0.15
       --enforce-eager
       --port 8001
