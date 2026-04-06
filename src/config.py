@@ -43,12 +43,13 @@ class EmbeddingConfig:
 LLM_CONFIG = LLMConfig()
 EMBEDDING_CONFIG = EmbeddingConfig()
 
-# 기존 호환성 유지
+# backwards-compat alias
 LLM_MODEL = LLM_CONFIG.model
 EMBEDDING_MODEL = EMBEDDING_CONFIG.model
 EMBEDDING_SIZE = EMBEDDING_CONFIG.size
 CHUNK_SIZE = EMBEDDING_CONFIG.chunk_size
 
+# backwards-compat alias (consumed by main.py and embedder.py via os.getenv)
 os.environ['EMBEDDING_SIZE'] = str(EMBEDDING_SIZE)
 os.environ['CHUNK_SIZE'] = str(CHUNK_SIZE)
 

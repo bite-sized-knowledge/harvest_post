@@ -22,6 +22,12 @@ from errors import ProcessingError, ErrorCategory, ErrorSeverity, classify_excep
 from logger import logger
 from sqlalchemy.sql import text, bindparam
 
+# --- Reject reason constants ---------------------------------------------------
+REASON_EMPTY_TITLE = "empty_title"
+REASON_EMPTY_CONTENT = "empty_content"
+REASON_LLM_FAILED = "llm_extraction_failed"
+REASON_LOW_QUALITY_PREFIX = "low_quality"
+
 # Concurrency limits (vLLM continuous batching 활용)
 LLM_SEMAPHORE = asyncio.Semaphore(16)  # vLLM continuous batching
 EMBEDDING_SEMAPHORE = asyncio.Semaphore(4)  # Ollama 임베딩 병렬
@@ -116,7 +122,7 @@ async def process_article(data):
     # --- Pre-LLM gate 1: empty title is never recoverable. ---
     if not (title or "").strip():
         print(f"[REJECT] {article_id} — empty title")
-        return _build_rejection(data, reason="empty_title", quality_score=1)
+        return _build_rejection(data, reason=REASON_EMPTY_TITLE, quality_score=1)
 
     try:
         parsed_text = await asyncio.to_thread(parse_article_text_from_html, content)
@@ -126,7 +132,7 @@ async def process_article(data):
         # --- Pre-LLM gate 2: empty body AND no video embed → nothing to judge. ---
         if parsed_is_empty and not video_present:
             print(f"[REJECT] {article_id} — empty content, no video")
-            return _build_rejection(data, reason="empty_content", quality_score=1)
+            return _build_rejection(data, reason=REASON_EMPTY_CONTENT, quality_score=1)
 
         print(f"[PREPROCESS] Article ID: {article_id}")
 
@@ -170,7 +176,7 @@ async def process_article(data):
             print(f"[REJECT] {article_id} — LLM extraction failed (None after retries)")
             return _build_rejection(
                 data,
-                reason="llm_extraction_failed",
+                reason=REASON_LLM_FAILED,
                 quality_score=1,
             )
 
@@ -179,7 +185,7 @@ async def process_article(data):
             print(f"[REJECT] {article_id} — low quality score={predict.quality_score}")
             return _build_rejection(
                 data,
-                reason=f"low_quality_{predict.quality_score}",
+                reason=f"{REASON_LOW_QUALITY_PREFIX}_{predict.quality_score}",
                 quality_score=predict.quality_score,
             )
 
@@ -249,6 +255,14 @@ async def main_async():
     logger.info("Harvest post started", stage="init")
     conn = Connection()
 
+    async def delete_from_queue(ids):
+        if not ids:
+            return
+        q = text("DELETE FROM article_queue WHERE article_id IN :ids").bindparams(
+            bindparam("ids", expanding=True)
+        )
+        await asyncio.to_thread(conn.session_execute, q, {"ids": ids})
+
     code_metadata = get_metadata()
     sql_metadata = conn.execute(
         get_metadata(sql=True)
@@ -304,10 +318,7 @@ async def main_async():
             await asyncio.to_thread(conn.session_execute, REJECTED_INSERT_QUERY, rejected_dicts)
 
             rejected_ids = [r.article_id for r in rejected_articles]
-            delete_query = text("DELETE FROM article_queue WHERE article_id IN :ids").bindparams(
-                bindparam("ids", expanding=True)
-            )
-            await asyncio.to_thread(conn.session_execute, delete_query, {"ids": rejected_ids})
+            await delete_from_queue(rejected_ids)
 
         # 승인된 아티클이 하나도 없으면 여기서 종료 (queue는 이미 정리됨)
         if not insert_rows:
@@ -367,10 +378,7 @@ async def main_async():
         # 승인된 아티클을 queue에서 제거
         if successful_ids:
             print(f"[DELETE] Removing {len(successful_ids)} successfully processed articles from queue...")
-            delete_query = text("DELETE FROM article_queue WHERE article_id IN :ids").bindparams(
-                bindparam("ids", expanding=True)
-            )
-            await asyncio.to_thread(conn.session_execute, delete_query, {"ids": successful_ids})
+            await delete_from_queue(successful_ids)
 
     except Exception as e:
         print(f"[FATAL ERROR] {str(e)}")

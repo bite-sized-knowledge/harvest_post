@@ -2,6 +2,8 @@ from pydantic import BaseModel, Field, validator
 from enum import Enum
 from typing import List
 
+MAX_KEYWORDS = 3
+
 
 class Category(Enum):
     FRONTEND = 1
@@ -28,8 +30,8 @@ class TopicClassification(BaseModel):
     # validation and leaving the row stuck in article_queue forever.
     keywords: List[str] = Field(
         min_items=1,
-        max_items=3,
-        description="Up to 3 keywords. Fewer values are backfilled with 'N/A'.",
+        max_items=MAX_KEYWORDS,
+        description=f"Up to {MAX_KEYWORDS} keywords. Fewer values are backfilled with 'N/A'.",
     )
     quality_score: int = Field(
         ge=1,
@@ -42,13 +44,13 @@ class TopicClassification(BaseModel):
 
     @validator('keywords', pre=True)
     def pad_keywords(cls, v):
-        """Normalize keyword list: drop empties, dedupe, pad to exactly 3."""
+        """Normalize keyword list: drop empties, dedupe, pad to exactly MAX_KEYWORDS."""
         if v is None:
-            return ["N/A", "N/A", "N/A"]
+            return ["N/A"] * MAX_KEYWORDS
         if isinstance(v, str):
             v = [v]
         if not isinstance(v, list):
-            return ["N/A", "N/A", "N/A"]
+            return ["N/A"] * MAX_KEYWORDS
         cleaned = []
         seen = set()
         for item in v:
@@ -59,9 +61,9 @@ class TopicClassification(BaseModel):
                 continue
             seen.add(stripped)
             cleaned.append(stripped)
-            if len(cleaned) == 3:
+            if len(cleaned) == MAX_KEYWORDS:
                 break
-        while len(cleaned) < 3:
+        while len(cleaned) < MAX_KEYWORDS:
             cleaned.append("N/A")
         return cleaned
 
