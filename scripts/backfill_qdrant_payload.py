@@ -75,33 +75,40 @@ def main():
         if not points:
             break
 
+        # Group points by payload for batch set_payload
+        payload_to_ids = {}
         for p in points:
             aid = p.payload.get("article_id") if p.payload else None
             if not aid or aid not in articles:
                 continue
 
             row = articles[aid]
-            new_payload = {
-                "published_at": float(row["pub_epoch"]) if row["pub_epoch"] else 0.0,
-                "blog_id": row["blog_id"],
-                "content_length": row["content_length"],
-                "lang": row["lang"],
-            }
+            new_payload = (
+                float(row["pub_epoch"]) if row["pub_epoch"] else 0.0,
+                row["blog_id"],
+                row["content_length"],
+                row["lang"],
+            )
 
-            # Only set fields that are missing or different
-            needs_update = False
-            for k, v in new_payload.items():
-                if p.payload.get(k) != v:
-                    needs_update = True
-                    break
-
+            needs_update = (
+                p.payload.get("published_at") != new_payload[0]
+                or p.payload.get("blog_id") != new_payload[1]
+                or p.payload.get("content_length") != new_payload[2]
+                or p.payload.get("lang") != new_payload[3]
+            )
             if needs_update:
-                qdrant.set_payload(
-                    collection_name=COLLECTION,
-                    payload=new_payload,
-                    points=[p.id],
-                )
-                updated += 1
+                key = new_payload
+                if key not in payload_to_ids:
+                    payload_to_ids[key] = []
+                payload_to_ids[key].append(p.id)
+
+        for (pub, bid, clen, lang), pids in payload_to_ids.items():
+            qdrant.set_payload(
+                collection_name=COLLECTION,
+                payload={"published_at": pub, "blog_id": bid, "content_length": clen, "lang": lang},
+                points=pids,
+            )
+            updated += len(pids)
 
         print(f"  Processed batch, updated {updated} so far...")
 
