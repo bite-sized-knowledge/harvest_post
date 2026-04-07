@@ -17,18 +17,45 @@ class PromptGenerator:
 
     def _build_instruction_text(self) -> str:
         g = self.prompt_data["tasks"]
+
+        # 카테고리 목록 구성 (name + description 형식 또는 plain string)
+        categories = g['focusing']['categories']
+        if categories and isinstance(categories[0], dict):
+            cat_names = [c['name'] for c in categories]
+            cat_detail_lines = []
+            for c in categories:
+                cat_detail_lines.append(f"  - {c['name']}: {c.get('description', '')}")
+                if c.get('examples'):
+                    cat_detail_lines.append(f"    Examples: {c['examples']}")
+        else:
+            cat_names = categories
+            cat_detail_lines = [f"  - {c}" for c in categories]
+
         lines = [
             "Classify the given tech article. Return ONLY a JSON object with these fields:",
             "",
             "1. Topic Classification (focusing):",
             f"- {g['focusing']['instruction']}",
-            f"- Categories: {' | '.join(g['focusing']['categories'])}",
+            f"- Available categories: {' | '.join(cat_names)}",
+            "",
+            "Category definitions:",
+        ]
+        lines.extend(cat_detail_lines)
+
+        # Disambiguation rules
+        if g['focusing'].get('disambiguation'):
+            lines.append("")
+            lines.append("Disambiguation rules (use these to resolve ambiguity):")
+            for rule in g['focusing']['disambiguation']:
+                lines.append(f"  * {rule}")
+
+        lines.extend([
             f"- Fallback: {g['focusing']['fallback'][0]}",
             "",
             "2. Keywords:",
             f"- {g['keywords']['instruction']}",
             f"- Exclude: {', '.join(g['keywords']['exclusions'])}",
-        ]
+        ])
 
         if "quality_score" in g:
             q = g["quality_score"]

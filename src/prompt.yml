@@ -18,21 +18,68 @@ tasks:
   focusing:
     instruction: >
       Assign one and only one topic from the fixed list based on the article's central theme.
+      Read each category description carefully — classify by what the article is PRIMARILY about.
 
     categories:
-      - "Frontend"
-      - "Backend"
-      - "Mobile Engineering"
-      - "AI / ML"
-      - "Database"
-      - "Security / Network"
-      - "Design"
-      - "Product Manager"
-      - "DevOps / Infra"
-      - "Hardware / IoT"
-      - "QA / Test Engineer"
-      - "Culture"
-      - "etc"
+      - name: "Frontend"
+        description: "Browser-side UI: React/Vue/Angular, CSS, web performance, micro frontends, browser APIs, Webpack/Vite, accessibility."
+        examples: "Component architecture, SSR/SSG, design system implementation, frontend testing (Jest/Cypress)."
+
+      - name: "Backend"
+        description: "Server-side application logic: API design, frameworks (Spring/Django/Express), microservices, message queues, async processing, performance optimization of application code."
+        examples: "REST/gRPC API, bulk processing, language migration, non-blocking I/O, code conventions for server code."
+
+      - name: "Mobile Engineering"
+        description: "Native or cross-platform mobile app development: iOS (Swift/ObjC), Android (Kotlin/Java), React Native, Flutter, mobile SDKs, app release process."
+        examples: "Mobile SDK integration, App Store release pipeline, cross-platform code sharing, mobile session tracking."
+
+      - name: "AI / ML"
+        description: "Machine learning, deep learning, NLP, LLMs, recommendation systems, MLOps, vector search, foundation models, AI agents."
+        examples: "Model training, fine-tuning, A/B testing for ML models, prompt engineering, RAG, embedding, recommendation algorithms."
+
+      - name: "Database"
+        description: "Database systems (SQL/NoSQL), migrations, query optimization, Redis/DynamoDB/PostgreSQL operations, data modeling, key-value stores, backup/replication."
+        examples: "DB migration, Redis at scale, query performance tuning, RDS maintenance, KV store introduction."
+
+      - name: "Security / Network"
+        description: "Security (auth, encryption, vulnerability, DDoS, bug bounty, penetration testing) AND networking (TCP/IP, DNS, CDN, IPv6, load balancing, firewall, VPN, TAP devices)."
+        examples: "Crypto API, phishing analysis, DDoS mitigation, IP fragmentation, OAuth implementation, network troubleshooting."
+
+      - name: "Design"
+        description: "UI/UX design process: user research, wireframing, prototyping, design systems (from a designer's perspective), accessibility design, information architecture."
+        examples: "Design sprint, usability testing, Figma workflows, design token management."
+
+      - name: "Product Manager"
+        description: "Product strategy, feature planning, roadmap, user metrics analysis, go-to-market, product launch retrospectives from a PM perspective."
+        examples: "Feature prioritization, product launch postmortem, A/B test interpretation (business), quick commerce strategy."
+
+      - name: "DevOps / Infra"
+        description: "Infrastructure, deployment, CI/CD, cloud architecture, containers/Kubernetes, monitoring/observability, SRE, incident response, data center operations, edge networks, IaC (Terraform/CDK), system reliability."
+        examples: "CI/CD pipeline, Kubernetes orchestration, Prometheus monitoring, post-mortem/incident report, cloud migration, deploy safety, SLI/SLO, availability report, Docker/container setup."
+
+      - name: "Hardware / IoT"
+        description: "Physical hardware, embedded systems, IoT devices, chip design, robotics, edge computing hardware."
+        examples: "NVIDIA GPU/edge devices, Arduino/Raspberry Pi projects, sensor networks, FPGA."
+
+      - name: "QA / Test Engineer"
+        description: "Software testing strategy and automation: test frameworks, E2E testing, performance testing, test infrastructure, flaky test management."
+        examples: "Playwright/Selenium automation, mobile test lab, sync engine testing, test monitoring dashboards."
+
+      - name: "Culture"
+        description: "Engineering culture, team building, developer experience, conferences/meetups/hackathons (event recaps), diversity/inclusion, career growth, hiring process, tech community, developer relations."
+        examples: "Team retrospective, hackathon recap, mentorship program, internship announcement, conference prep, DEI initiative."
+
+      - name: "etc"
+        description: "Content that does not fit any category above: internet trend analysis, legal/policy discussion, seasonal/holiday content, charity, personal opinion pieces."
+
+    disambiguation:
+      - "Backend vs DevOps: If the article is about APPLICATION code (APIs, business logic, frameworks, language choices) → Backend. If about INFRASTRUCTURE (deployment, monitoring, containers, cloud, CI/CD, incident response, reliability) → DevOps / Infra."
+      - "Backend vs Database: If the focus is on database SYSTEMS (Redis ops, query tuning, migration, replication) → Database. If the database is just used within a backend service → Backend."
+      - "Security vs DevOps: If the article is about ATTACKS, DEFENSE, encryption, authentication, or network protocols → Security / Network. If about infrastructure monitoring or deploy pipeline → DevOps / Infra."
+      - "Frontend vs DevOps: If about browser-side code (React, CSS, web perf) → Frontend. If about deploying/serving frontends (micro frontend deployment infra, CDN) → assess which aspect dominates."
+      - "AI/ML vs Backend: If the core topic is a machine learning MODEL (training, inference, recommendation algo) → AI / ML. If ML is incidental to a backend system → Backend."
+      - "Culture vs PM: If about team/people/events/hiring → Culture. If about product decisions/strategy/launch → Product Manager."
+      - "Culture vs etc: Event recaps, hackathons, developer meetups, DEI initiatives → Culture. Internet trends, legal topics, charity campaigns → etc."
 
     fallback:
       - "If no dominant topic fits, return 'etc'. Never invent new categories."
