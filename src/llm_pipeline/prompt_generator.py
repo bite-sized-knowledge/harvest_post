@@ -49,6 +49,13 @@ class PromptGenerator:
             for rule in g['focusing']['disambiguation']:
                 lines.append(f"  * {rule}")
 
+        # Few-shot examples
+        if g['focusing'].get('few_shot_examples'):
+            lines.append("")
+            lines.append("Classification examples:")
+            for ex in g['focusing']['few_shot_examples']:
+                lines.append(f'  - "{ex["title"]}" → {ex["answer"]}')
+
         lines.extend([
             f"- Fallback: {g['focusing']['fallback'][0]}",
             "",

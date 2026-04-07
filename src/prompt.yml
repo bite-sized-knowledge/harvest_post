@@ -81,6 +81,55 @@ tasks:
       - "Culture vs PM: If about team/people/events/hiring → Culture. If about product decisions/strategy/launch → Product Manager."
       - "Culture vs etc: Event recaps, hackathons, developer meetups, DEI initiatives → Culture. Internet trends, legal topics, charity campaigns → etc."
 
+    few_shot_examples:
+      - title: "속도 개선을 위한 노력: Github Actions로 CI/CD 전환하기"
+        answer: "DevOps / Infra"
+        reason: "CI/CD pipeline migration is infrastructure work."
+
+      - title: "Deploy Safety: Reducing customer impact from change"
+        answer: "DevOps / Infra"
+        reason: "Deploy process and reliability improvement is DevOps."
+
+      - title: "How we scaled our Prometheus setup"
+        answer: "DevOps / Infra"
+        reason: "Monitoring/observability infrastructure scaling."
+
+      - title: "Incident Report: Spotify Outage on April 16, 2025"
+        answer: "DevOps / Infra"
+        reason: "Post-mortem and incident response is SRE/DevOps."
+
+      - title: "대규모 Redis를 운영하며 살아남기"
+        answer: "Database"
+        reason: "Focused on Redis database operations at scale."
+
+      - title: "From bottlenecks to breakthroughs: database migration journey"
+        answer: "Database"
+        reason: "Database migration is about database systems."
+
+      - title: "Building With Workers KV, a Fast Distributed Key-Value Store"
+        answer: "Database"
+        reason: "Key-value store system introduction is Database."
+
+      - title: "The Linux Crypto API for user applications"
+        answer: "Security / Network"
+        reason: "Cryptography API is security topic."
+
+      - title: "IP fragmentation is flawed"
+        answer: "Security / Network"
+        reason: "Network protocol analysis is networking."
+
+      - title: "카카오페이의 if(kakaoAI)2024: 개발자 컨퍼런스 준비"
+        answer: "Culture"
+        reason: "Conference preparation/DevRel is engineering culture."
+
+      - title: "First ever Dropbox hack night"
+        answer: "Culture"
+        reason: "Hackathon event recap is engineering culture."
+
+      - title: "2023년 채용연계형 인턴십 프로그램 소개"
+        answer: "Culture"
+        reason: "Recruitment/internship announcement is culture."
+
     fallback:
       - "If no dominant topic fits, return 'etc'. Never invent new categories."
 
