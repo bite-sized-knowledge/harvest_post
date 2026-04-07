@@ -212,7 +212,7 @@ async def process_article(data):
             published_at,
         )
 
-        return values, article_id
+        return values, article_id, predict.quality_score
 
     except Exception as e:
         category, severity = classify_exception(e, context="article_processing")
@@ -238,12 +238,26 @@ async def process_embedding(row: dict, embedder: TextEmbeddings) -> dict:
             content=row["content"],
             dimensions=int(os.getenv("EMBEDDING_SIZE"))
         )
+        # Enrich payload with metadata for downstream ranking/filtering
+        published_at = row.get("published_at")
+        pub_epoch = 0.0
+        if published_at is not None:
+            try:
+                pub_epoch = float(published_at.timestamp()) if hasattr(published_at, 'timestamp') else float(published_at)
+            except (TypeError, ValueError):
+                pub_epoch = 0.0
+
         return {
             "id": row["article_id"],
             "vector": embedding,
             "payload": {
                 "article_id": row["article_id"],
-                "category": row["category_id"]
+                "category": row.get("category_id"),
+                "published_at": pub_epoch,
+                "quality_score": row.get("quality_score"),
+                "blog_id": row.get("blog_id"),
+                "content_length": row.get("content_length"),
+                "lang": row.get("lang"),
             }
         }
 
@@ -307,8 +321,8 @@ async def main_async():
                 rejected_articles.append(result)
                 continue
             if result:
-                values, article_id = result
-                insert_rows.append(values)
+                values, article_id, quality_score = result
+                insert_rows.append((values, quality_score))
                 successful_ids.append(article_id)
 
         # --- 2단계: 거부 아티클을 article_rejected로 이관 ---
@@ -327,9 +341,11 @@ async def main_async():
 
         # --- 3단계: 임베딩 및 벡터 DB 저장 (승인된 것만) ---
         print(f"[INSERT] Processing {len(insert_rows)} records...")
-        insert_dicts = [
-            dict(zip(COLUMN_NAMES, row)) for row in insert_rows
-        ]
+        insert_dicts = []
+        for values, quality_score in insert_rows:
+            d = dict(zip(COLUMN_NAMES, values))
+            d["quality_score"] = quality_score
+            insert_dicts.append(d)
 
         print(f"[Ollama Embedding & Qdrant] Process Starting...")
         embedder = TextEmbeddings()
