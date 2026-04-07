@@ -28,10 +28,16 @@ def sync_mysql(host: str, user: str, password: str) -> None:
     try:
         cur = conn.cursor()
 
-        # article table — upsert all rows
+        # article table — upsert (exclude STORED GENERATED columns)
         cur.execute("""
             INSERT INTO bite_dev.article
-            SELECT * FROM bite.article
+                (article_id, blog_id, url, title, thumbnail, description, keywords,
+                 category_id, content, content_length, lang, like_count, share_count,
+                 bookmark_count, published_at, created_at, updated_at)
+            SELECT article_id, blog_id, url, title, thumbnail, description, keywords,
+                   category_id, content, content_length, lang, like_count, share_count,
+                   bookmark_count, published_at, created_at, updated_at
+            FROM bite.article
             ON DUPLICATE KEY UPDATE
                 keywords=VALUES(keywords), category_id=VALUES(category_id),
                 content=VALUES(content), content_length=VALUES(content_length),
