@@ -21,12 +21,16 @@ QUALITY_REJECT_THRESHOLD = int(os.getenv('QUALITY_REJECT_THRESHOLD', 3))
 # Embedding: in-process sentence-transformers on CPU (no server needed).
 VLLM_BASE_URL = os.getenv('VLLM_BASE_URL', 'http://vllm-chat:8000/v1')
 
+# ---------- Inference Logging ----------
+ENABLE_INFERENCE_LOG = os.getenv('ENABLE_INFERENCE_LOG', '0') == '1'
+
 
 # ---------- LLM Configuration (Single Source of Truth) ----------
 @dataclass(frozen=True)
 class LLMConfig:
     """LLM 관련 설정 - 모든 LLM 설정은 여기서 관리"""
     model: str = "qwen3.5:9b"
+    model_version: str = "QuantTrio/Qwen3.5-9B-AWQ"
     temperature: float = 0.1
     max_retries: int = 3
 
@@ -56,11 +60,11 @@ os.environ['CHUNK_SIZE'] = str(CHUNK_SIZE)
 COLUMN_NAMES = [
     'article_id', 'blog_id', 'url', 'title', 'thumbnail',
     'description', 'keywords', 'category_id', 'content', 'content_length',
-    'lang','created_at', 'updated_at', 'published_at'
+    'lang', 'quality_score', 'created_at', 'updated_at', 'published_at'
 ]
 
 UPSERT_COLUMNS = [
-    'keywords', 'category_id', 'content', 'content_length', 'lang', 'updated_at'
+    'keywords', 'category_id', 'content', 'content_length', 'lang', 'quality_score', 'updated_at'
 ]
 
 def build_upsert_query(table_name: str, column_names: list, upsert_columns: list) -> str:

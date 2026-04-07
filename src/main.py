@@ -14,9 +14,11 @@ from qdrant_config import QdrantVectorStore
 from config import (
     INSERT_QUERY, QUEUE_QUERY, COLUMN_NAMES, get_metadata, update_model_config_query,
     REJECTED_INSERT_QUERY, QUALITY_REJECT_THRESHOLD,
+    ENABLE_INFERENCE_LOG, LLM_CONFIG,
 )
 from response import HTTPResponse
 from llm_pipeline import LangChainModel
+from llm_pipeline.inference_logger import InferenceLogger
 from preprocessing import BlogPostProcessor, parse_article_text_from_html
 from errors import ProcessingError, ErrorCategory, ErrorSeverity, classify_exception
 from logger import logger
@@ -122,7 +124,7 @@ async def process_article(data):
     # --- Pre-LLM gate 1: empty title is never recoverable. ---
     if not (title or "").strip():
         print(f"[REJECT] {article_id} — empty title")
-        return _build_rejection(data, reason=REASON_EMPTY_TITLE, quality_score=1)
+        return _build_rejection(data, reason=REASON_EMPTY_TITLE, quality_score=1), None, None
 
     try:
         parsed_text = await asyncio.to_thread(parse_article_text_from_html, content)
@@ -132,7 +134,7 @@ async def process_article(data):
         # --- Pre-LLM gate 2: empty body AND no video embed → nothing to judge. ---
         if parsed_is_empty and not video_present:
             print(f"[REJECT] {article_id} — empty content, no video")
-            return _build_rejection(data, reason=REASON_EMPTY_CONTENT, quality_score=1)
+            return _build_rejection(data, reason=REASON_EMPTY_CONTENT, quality_score=1), None, None
 
         print(f"[PREPROCESS] Article ID: {article_id}")
 
@@ -164,21 +166,19 @@ async def process_article(data):
 
         print(f"[PREDICT] Article ID: {article_id}")
         async with LLM_SEMAPHORE:
-            predict = await MODEL.predict(llm_query, False, False)
+            inference = await MODEL.predict(llm_query, False, False)
+
+        predict = inference.parsed
 
         if predict is None:
             # LLM returned unparseable output after 3 internal retries.
-            # This used to leave the row in article_queue for retry, but in
-            # practice identical inputs produce identical failures and the
-            # row got stuck forever. Route to article_rejected so the queue
-            # stays healthy; operators can recover via cmd/refetch_rejected
-            # if the model is later improved.
+            # Route to article_rejected so the queue stays healthy.
             print(f"[REJECT] {article_id} — LLM extraction failed (None after retries)")
             return _build_rejection(
                 data,
                 reason=REASON_LLM_FAILED,
                 quality_score=1,
-            )
+            ), llm_query, inference
 
         # --- Post-LLM gate: quality score below threshold → reject terminally. ---
         if predict.quality_score < QUALITY_REJECT_THRESHOLD:
@@ -187,7 +187,7 @@ async def process_article(data):
                 data,
                 reason=f"{REASON_LOW_QUALITY_PREFIX}_{predict.quality_score}",
                 quality_score=predict.quality_score,
-            )
+            ), llm_query, inference
 
         # Accepted. Build the row for the article table.
         final_content = preprocessed  # empty string for video-only posts
@@ -207,12 +207,13 @@ async def process_article(data):
             final_content,
             len(final_content),
             lang,
+            predict.quality_score,
             created_at,
             updated_at,
             published_at,
         )
 
-        return values, article_id, predict.quality_score
+        return (values, article_id, predict.quality_score), llm_query, inference
 
     except Exception as e:
         category, severity = classify_exception(e, context="article_processing")
@@ -296,6 +297,15 @@ async def main_async():
     if queued is None or len(queued) == 0:
         return HTTPResponse(HTTPStatus.OK, "Article Queue Empty").get_response()
 
+    # Inference logger (Phase 1 평가 인프라)
+    inf_logger = None
+    if ENABLE_INFERENCE_LOG:
+        inf_logger = InferenceLogger(
+            model_key=LLM_CONFIG.model,
+            model_version=LLM_CONFIG.model_version,
+            temperature=LLM_CONFIG.temperature,
+        )
+
     try:
         # 1단계: 모든 article 병렬 처리 (전처리 + LLM)
         tasks = [process_article(row) for row in queued.to_dict(orient="records")]
@@ -306,17 +316,34 @@ async def main_async():
         rejected_articles = []       # RejectedArticle instances headed for article_rejected
         processing_errors = []
 
-        for result in results:
-            if isinstance(result, Exception):
-                print(f"[ERROR] Task exception: {result}")
+        for raw_result in results:
+            if isinstance(raw_result, Exception):
+                print(f"[ERROR] Task exception: {raw_result}")
                 continue
-            if isinstance(result, ProcessingError):
-                processing_errors.append(result)
-                if result.is_retryable:
-                    print(f"[RETRY-LATER] {result.article_id} will be retried (transient error)")
+            if isinstance(raw_result, ProcessingError):
+                processing_errors.append(raw_result)
+                if raw_result.is_retryable:
+                    print(f"[RETRY-LATER] {raw_result.article_id} will be retried (transient error)")
                 else:
-                    print(f"[SKIP] {result.article_id} skipped (permanent error)")
+                    print(f"[SKIP] {raw_result.article_id} skipped (permanent error)")
                 continue
+
+            # process_article은 항상 (result, llm_query, inference) 튜플 반환
+            result, llm_query, inference = raw_result
+
+            # 추론 로깅 (LLM 호출이 있었던 경우만)
+            if inf_logger and inference is not None:
+                if isinstance(result, RejectedArticle):
+                    outcome = f"rejected_{result.reject_reason}"
+                else:
+                    outcome = "accepted"
+                inf_logger.log(
+                    article_id=result.article_id if isinstance(result, RejectedArticle) else result[1],
+                    input_text=llm_query,
+                    result=inference,
+                    outcome=outcome,
+                )
+
             if isinstance(result, RejectedArticle):
                 rejected_articles.append(result)
                 continue
@@ -336,6 +363,8 @@ async def main_async():
 
         # 승인된 아티클이 하나도 없으면 여기서 종료 (queue는 이미 정리됨)
         if not insert_rows:
+            if inf_logger:
+                await inf_logger.flush(conn)
             await asyncio.to_thread(conn.close)
             return HTTPResponse(HTTPStatus.OK, "No accepted articles this batch").get_response()
 
@@ -344,7 +373,6 @@ async def main_async():
         insert_dicts = []
         for values, quality_score in insert_rows:
             d = dict(zip(COLUMN_NAMES, values))
-            d["quality_score"] = quality_score
             insert_dicts.append(d)
 
         print(f"[Ollama Embedding & Qdrant] Process Starting...")
@@ -398,9 +426,13 @@ async def main_async():
 
     except Exception as e:
         print(f"[FATAL ERROR] {str(e)}")
+        if inf_logger:
+            await inf_logger.flush(conn)
         await asyncio.to_thread(conn.close)
         return HTTPResponse(HTTPStatus.INTERNAL_SERVER_ERROR, str(e)).get_response()
 
+    if inf_logger:
+        await inf_logger.flush(conn)
     await asyncio.to_thread(conn.close)
     logger.info(
         "Harvest post completed",

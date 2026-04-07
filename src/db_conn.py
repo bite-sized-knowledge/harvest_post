@@ -28,13 +28,12 @@ class Connection:
         """ SQLAlchemy 엔진 생성 """
         DATABASE_URL = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
         connect_args = {}
-        # 외부 접속 시 SSL 활성화 (require_secure_transport=ON 대응)
-        if host not in ('localhost', '127.0.0.1'):
-            import ssl
-            ssl_ctx = ssl.create_default_context()
-            ssl_ctx.check_hostname = False
-            ssl_ctx.verify_mode = ssl.CERT_NONE
-            connect_args['ssl'] = ssl_ctx
+        # SSL 활성화 (require_secure_transport=ON 대응)
+        import ssl
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
+        connect_args['ssl'] = ssl_ctx
         return create_engine(
             DATABASE_URL,
             pool_size=10,
