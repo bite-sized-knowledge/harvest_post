@@ -77,6 +77,34 @@ class PromptGenerator:
                 lines.append("- Guidance:")
                 lines.extend([f"  * {line}" for line in q["guidance"]])
 
+        if "difficulty" in g:
+            d = g["difficulty"]
+            lines.extend([
+                "",
+                "4. Difficulty (difficulty):",
+                f"- {d['instruction']}",
+                "- Levels:",
+            ])
+            lines.extend([f"  * {line}" for line in d.get("rubric", [])])
+
+        if "content_type" in g:
+            ct = g["content_type"]
+            lines.extend([
+                "",
+                "5. Content Type (content_type):",
+                f"- {ct['instruction']}",
+                "- Types:",
+            ])
+            lines.extend([f"  * {line}" for line in ct.get("types", [])])
+
+        if "summary" in g:
+            s = g["summary"]
+            lines.extend([
+                "",
+                "6. Summary (summary):",
+                f"- {s['instruction']}",
+            ])
+
         lines.extend([
             "",
             "Respond in strict JSON format matching this schema:",

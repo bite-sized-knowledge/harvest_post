@@ -25,7 +25,10 @@ UPDATE_SQL = text("""
     UPDATE article
     SET category_id = :category_id,
         quality_score = :quality_score,
-        keywords = :keywords
+        keywords = :keywords,
+        difficulty = :difficulty,
+        content_type = :content_type,
+        summary = :summary
     WHERE article_id = :article_id
 """)
 
@@ -51,6 +54,9 @@ async def classify_one(model: LangChainModel, article_id: str, llm_query: str,
             "category_id": inference.parsed.focusing.value,
             "quality_score": inference.parsed.quality_score,
             "keywords": "\t".join(inference.parsed.keywords),
+            "difficulty": inference.parsed.difficulty,
+            "content_type": inference.parsed.content_type.value if inference.parsed.content_type else None,
+            "summary": inference.parsed.summary,
             "success": True,
             "inference": inference,
         }
@@ -132,6 +138,9 @@ async def main_async(args):
                 "category_id": result["category_id"],
                 "quality_score": result["quality_score"],
                 "keywords": result["keywords"],
+                "difficulty": result["difficulty"],
+                "content_type": result["content_type"],
+                "summary": result["summary"],
             })
 
             if inf_logger:

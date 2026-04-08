@@ -60,11 +60,13 @@ os.environ['CHUNK_SIZE'] = str(CHUNK_SIZE)
 COLUMN_NAMES = [
     'article_id', 'blog_id', 'url', 'title', 'thumbnail',
     'description', 'keywords', 'category_id', 'content', 'content_length',
-    'lang', 'quality_score', 'created_at', 'updated_at', 'published_at'
+    'lang', 'quality_score', 'difficulty', 'content_type', 'summary',
+    'created_at', 'updated_at', 'published_at'
 ]
 
 UPSERT_COLUMNS = [
-    'keywords', 'category_id', 'content', 'content_length', 'lang', 'quality_score', 'updated_at'
+    'keywords', 'category_id', 'content', 'content_length', 'lang',
+    'quality_score', 'difficulty', 'content_type', 'summary', 'updated_at'
 ]
 
 def build_upsert_query(table_name: str, column_names: list, upsert_columns: list) -> str:

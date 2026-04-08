@@ -1,8 +1,17 @@
 from pydantic import BaseModel, Field, validator
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 MAX_KEYWORDS = 3
+
+
+class ContentType(str, Enum):
+    TUTORIAL = "tutorial"
+    DEEP_DIVE = "deep-dive"
+    POSTMORTEM = "postmortem"
+    CASE_STUDY = "case-study"
+    ANNOUNCEMENT = "announcement"
+    OPINION = "opinion"
 
 
 class Category(Enum):
@@ -40,6 +49,18 @@ class TopicClassification(BaseModel):
             "Quality rating from 1 (unusable/promo/empty) to 5 (deep technical post). "
             "Articles scoring below the rejection threshold are moved to article_rejected."
         ),
+    )
+    difficulty: int = Field(
+        ge=1,
+        le=3,
+        description="1=beginner, 2=intermediate, 3=advanced",
+    )
+    content_type: ContentType = Field(
+        description="Article format type",
+    )
+    summary: str = Field(
+        max_length=200,
+        description="2-sentence summary of the article in the article's language",
     )
 
     @validator('keywords', pre=True)
@@ -105,3 +126,50 @@ class TopicClassification(BaseModel):
             if stripped.isdigit():
                 return int(stripped)
         raise ValueError(f"Invalid quality_score: {v!r}")
+
+    @validator('difficulty', pre=True)
+    def coerce_difficulty(cls, v):
+        if isinstance(v, int):
+            return max(1, min(3, v))
+        if isinstance(v, float):
+            return max(1, min(3, int(round(v))))
+        if isinstance(v, str) and v.strip().isdigit():
+            return max(1, min(3, int(v.strip())))
+        return 2  # default to intermediate
+
+    @validator('content_type', pre=True)
+    def coerce_content_type(cls, v):
+        if isinstance(v, ContentType):
+            return v
+        if isinstance(v, str):
+            v_lower = v.strip().lower().replace(" ", "-").replace("_", "-")
+            for ct in ContentType:
+                if ct.value == v_lower:
+                    return ct
+            # fuzzy match
+            mapping = {
+                "tutorial": ContentType.TUTORIAL,
+                "how-to": ContentType.TUTORIAL,
+                "guide": ContentType.TUTORIAL,
+                "deep-dive": ContentType.DEEP_DIVE,
+                "deepdive": ContentType.DEEP_DIVE,
+                "analysis": ContentType.DEEP_DIVE,
+                "postmortem": ContentType.POSTMORTEM,
+                "post-mortem": ContentType.POSTMORTEM,
+                "incident": ContentType.POSTMORTEM,
+                "case-study": ContentType.CASE_STUDY,
+                "casestudy": ContentType.CASE_STUDY,
+                "announcement": ContentType.ANNOUNCEMENT,
+                "release": ContentType.ANNOUNCEMENT,
+                "opinion": ContentType.OPINION,
+                "essay": ContentType.OPINION,
+            }
+            if v_lower in mapping:
+                return mapping[v_lower]
+        return ContentType.DEEP_DIVE  # default
+
+    @validator('summary', pre=True)
+    def coerce_summary(cls, v):
+        if not v or not isinstance(v, str):
+            return "N/A"
+        return v.strip()[:200]

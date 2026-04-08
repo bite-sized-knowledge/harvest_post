@@ -164,15 +164,51 @@ tasks:
       - "Tech retrospectives about commerce features (coupon systems, discount engines, pricing) are NOT promotional — they are score 4-5 engineering content."
       - "Recruitment posts that describe actual engineering work (team architecture, stack, projects) are score 3; pure 'we are hiring' posts are score 2."
 
+  difficulty:
+    instruction: >
+      Rate the technical difficulty level of this article.
+      Consider: prerequisite knowledge assumed, depth of concepts, vocabulary complexity.
+      Return exactly ONE integer: 1, 2, or 3.
+
+    rubric:
+      - "1 (Beginner): No prior knowledge required. Basic concepts, getting-started guides, high-level overviews, non-technical content."
+      - "2 (Intermediate): Assumes working knowledge of the domain. Practical tutorials, tool comparisons, standard engineering discussions."
+      - "3 (Advanced): Assumes deep expertise. Architecture decisions, performance optimization, distributed systems internals, research-level content, production war stories with complex debugging."
+
+  content_type:
+    instruction: >
+      Classify the article's format into exactly one type.
+
+    types:
+      - "tutorial: Step-by-step guide, how-to, getting started, practical walkthrough."
+      - "deep-dive: In-depth analysis, architecture explanation, technical exploration, detailed implementation."
+      - "postmortem: Incident report, outage analysis, failure investigation, lessons learned from production issues."
+      - "case-study: Real-world project story, migration experience, before/after comparison, company engineering blog."
+      - "announcement: Product launch, feature release, event notice, version update, program introduction."
+      - "opinion: Personal essay, industry commentary, career reflection, trend analysis, editorial."
+
+  summary:
+    instruction: >
+      Write a 2-sentence summary of the article.
+      First sentence: what the article covers. Second sentence: the key insight or takeaway.
+      Write in the same language as the article (Korean articles get Korean summaries, English articles get English summaries).
+      Maximum 200 characters total. Be concise and specific — avoid generic phrases.
+
 output:
   format: JSON
   schema:
-    focusing: string
-    keywords: list[string] (length must be 3)
-    quality_score: integer (1 to 5)
+    focusing: "string"
+    keywords: "list[string] (length must be 3)"
+    quality_score: "integer (1 to 5)"
+    difficulty: "integer (1 to 3)"
+    content_type: "string (one of: tutorial, deep-dive, postmortem, case-study, announcement, opinion)"
+    summary: "string (max 200 chars, 2 sentences)"
 
 error_handling:
   fallback_values:
     focusing: "etc"
     keywords: ["N/A", "N/A", "N/A"]
     quality_score: 3
+    difficulty: 2
+    content_type: "deep-dive"
+    summary: "N/A"

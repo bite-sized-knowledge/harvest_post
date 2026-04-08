@@ -66,6 +66,9 @@ class InferenceLogger:
                 "focusing": result.parsed.focusing.name,
                 "keywords": result.parsed.keywords,
                 "quality_score": result.parsed.quality_score,
+                "difficulty": result.parsed.difficulty,
+                "content_type": result.parsed.content_type.value if result.parsed.content_type else None,
+                "summary": result.parsed.summary,
             })
             category_id = result.parsed.focusing.value
             keywords = "\t".join(result.parsed.keywords)
