@@ -59,8 +59,8 @@ class TopicClassification(BaseModel):
         description="Article format type",
     )
     summary: str = Field(
-        max_length=200,
-        description="2-sentence summary of the article in the article's language",
+        max_length=100,
+        description="80자 이내 한국어 한 문장 요약. 종결어미로 끝낼 것.",
     )
 
     @validator('keywords', pre=True)
@@ -172,4 +172,23 @@ class TopicClassification(BaseModel):
     def coerce_summary(cls, v):
         if not v or not isinstance(v, str):
             return "N/A"
-        return v.strip()[:200]
+        import re
+        cleaned = v.strip()
+        # CJK Unified Ideographs (한자/중국어) 제거
+        cleaned = re.sub(r'[\u4e00-\u9fff\u3400-\u4dbf\U00020000-\U0002a6df]', '', cleaned)
+        cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip()
+        if len(cleaned) <= 80:
+            return cleaned
+        # 80자 이내에서 마지막 온전한 문장(종결어미/마침표)으로 자르기
+        truncated = cleaned[:80]
+        # 종결 위치 찾기: 다/다./합니다/한다/이다/있다/했다/된다/etc + optional period
+        last_end = -1
+        for m in re.finditer(r'[다요함됨임]\.*', truncated):
+            last_end = m.end()
+        if last_end > 20:
+            return truncated[:last_end]
+        # 종결어미 못 찾으면 마지막 공백에서 자르고 마침표 추가
+        last_space = truncated.rfind(' ')
+        if last_space > 20:
+            return truncated[:last_space] + '.'
+        return truncated + '.'

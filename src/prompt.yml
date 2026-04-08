@@ -189,10 +189,10 @@ tasks:
 
   summary:
     instruction: >
-      Write a 2-sentence summary of the article.
-      First sentence: what the article covers. Second sentence: the key insight or takeaway.
-      Write in the same language as the article (Korean articles get Korean summaries, English articles get English summaries).
-      Maximum 200 characters total. Be concise and specific — avoid generic phrases.
+      아티클의 핵심 내용을 한국어 한 문장으로 요약하라.
+      반드시 한국어(한글)로 작성하고, 종결어미(~다, ~했다, ~한다, ~소개한다)로 끝내라.
+      영어 아티클도 반드시 한국어로 요약. 80자 이내. 간결하고 구체적으로.
+      절대 중국어(한자)를 사용하지 마라. 한글과 영문 알파벳만 허용.
 
 output:
   format: JSON
