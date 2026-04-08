@@ -1,7 +1,8 @@
-"""영어 summary를 한국어로 재생성하는 backfill.
+"""영어 summary를 한국어로 변환하는 backfill.
 
-summary만 업데이트 (category, quality_score 등은 유지).
-LLM에 전체 분류를 다시 시키되 summary만 DB에 반영.
+2단계 전략:
+1. 전체 분류 프롬프트로 summary 생성 (모델이 영어 아티클에서 영어 summary를 줄 수 있음)
+2. 영어 summary를 별도 경량 번역 프롬프트로 한국어 전환
 
 Usage:
     cd src && DB_HOST=127.0.0.1 VLLM_BASE_URL=http://192.168.219.101:8000/v1 \
@@ -9,44 +10,75 @@ Usage:
 """
 import asyncio
 import os
+import re
 import sys
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from db_conn import Connection
-from llm_pipeline.model import LangChainModel
+from config import LLM_CONFIG, VLLM_BASE_URL
+from langchain_openai import ChatOpenAI
 from sqlalchemy import text
 
 UPDATE_SQL = text("UPDATE article SET summary = :summary WHERE article_id = :article_id")
 
+# CJK 제거 함수
+def clean_summary(s: str) -> str:
+    s = re.sub(r'[\u4e00-\u9fff\u3400-\u4dbf\U00020000-\U0002a6df]', '', s)
+    s = re.sub(r'\s{2,}', ' ', s).strip()
+    if len(s) <= 80:
+        return s
+    truncated = s[:80]
+    last_end = -1
+    for m in re.finditer(r'[다요함됨임]\.*', truncated):
+        last_end = m.end()
+    if last_end > 20:
+        return truncated[:last_end]
+    last_space = truncated.rfind(' ')
+    if last_space > 20:
+        return truncated[:last_space] + '.'
+    return truncated + '.'
 
-def build_llm_query(title, description, content):
-    title = title or ""
-    description = description or ""
-    content = (content or "")[:6000]
-    return f"Title : {title}, Description : {description}, Body Content : {content}"
+
+def is_korean(s: str) -> bool:
+    """한글 문자가 하나라도 있으면 True"""
+    return bool(re.search(r'[\uac00-\ud7a3\u3131-\u318e]', s))
 
 
-async def classify_one(model, article_id, llm_query, semaphore):
+async def translate_to_korean(llm: ChatOpenAI, eng_summary: str, semaphore) -> str:
+    """영어 summary를 한국어 80자 이내로 번역."""
+    prompt = f"다음 영문을 한국어 한 문장(80자 이내)으로 번역하라. 종결어미(~다/~한다)로 끝내라. 한자 사용 금지.\n\n{eng_summary}"
     async with semaphore:
-        inference = await model.predict(llm_query, show_prompt=False, show_output=False)
-    if inference.parsed and inference.parsed.summary:
-        return {"article_id": article_id, "summary": inference.parsed.summary, "success": True}
-    return {"article_id": article_id, "success": False}
+        response = await llm.ainvoke(prompt)
+    result = response.content.strip() if hasattr(response, 'content') else str(response).strip()
+    return clean_summary(result)
 
 
 async def main():
     conn = Connection()
-    model = LangChainModel()
     semaphore = asyncio.Semaphore(16)
 
+    # 번역 전용 경량 LLM (전체 분류 불필요)
+    llm = ChatOpenAI(
+        model=LLM_CONFIG.model,
+        base_url=VLLM_BASE_URL,
+        api_key="not-needed",
+        temperature=0.1,
+    )
+
     df = conn.execute("""
-        SELECT article_id, title, description, content FROM article
+        SELECT article_id, summary FROM article
+        WHERE summary IS NULL OR summary = 'N/A' OR summary REGEXP '^[A-Za-z]'
         ORDER BY published_at DESC
     """)
     total = len(df)
-    print(f"[BACKFILL-KO] {total} articles to re-summarize")
+    print(f"[TRANSLATE-KO] {total} summaries to translate")
+
+    if total == 0:
+        print("[DONE] Nothing to do")
+        conn.close()
+        return
 
     rows = df.to_dict(orient="records")
     batch_size = 50
@@ -59,36 +91,45 @@ async def main():
         batch_num = batch_start // batch_size + 1
         print(f"\n[BATCH {batch_num}] {batch_start+1}-{min(batch_start+batch_size, total)}/{total}")
 
-        tasks = [
-            classify_one(model, r["article_id"],
-                         build_llm_query(r["title"], r["description"], r["content"]),
-                         semaphore)
-            for r in batch
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        tasks = []
+        for r in batch:
+            s = r.get("summary") or ""
+            if not s or s == "N/A" or not s.strip():
+                # summary 자체가 없으면 스킵 (전체 분류 backfill 필요)
+                continue
+            tasks.append((r["article_id"], translate_to_korean(llm, s, semaphore)))
+
+        if not tasks:
+            failed += len(batch)
+            print(f"  Skipped (no summary to translate)")
+            continue
+
+        ids = [t[0] for t in tasks]
+        results = await asyncio.gather(*[t[1] for t in tasks], return_exceptions=True)
 
         update_rows = []
-        for r in results:
-            if isinstance(r, Exception):
+        for aid, result in zip(ids, results):
+            if isinstance(result, Exception):
                 failed += 1
                 continue
-            if not r["success"]:
+            if not is_korean(result):
                 failed += 1
                 continue
-            update_rows.append({"article_id": r["article_id"], "summary": r["summary"]})
+            update_rows.append({"article_id": aid, "summary": result})
 
         if update_rows:
             await asyncio.to_thread(conn.session_execute, UPDATE_SQL, update_rows)
 
         updated += len(update_rows)
+        failed += (len(tasks) - len(update_rows))
         elapsed = time.time() - t_start
         rate = updated / elapsed if elapsed > 0 else 0
         remaining = total - batch_start - batch_size
         eta = remaining / rate if rate > 0 else 0
-        print(f"  Updated: {len(update_rows)}, Total: {updated}/{total}, Rate: {rate:.1f}/s, ETA: {eta:.0f}s")
+        print(f"  Translated: {len(update_rows)}, Total: {updated}/{total}, Rate: {rate:.1f}/s, ETA: {eta:.0f}s")
 
     elapsed = time.time() - t_start
-    print(f"\n[DONE] {updated} updated, {failed} failed, {elapsed:.0f}s")
+    print(f"\n[DONE] {updated} translated, {failed} failed, {elapsed:.0f}s")
     conn.close()
 
 
