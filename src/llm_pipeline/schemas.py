@@ -1,8 +1,33 @@
+import re
+
 from pydantic import BaseModel, Field, validator
 from enum import Enum
 from typing import List, Optional
 
 MAX_KEYWORDS = 3
+
+# Compiled regex for summary cleaning (used in validator + backfill scripts)
+_CJK_RE = re.compile(r'[\u4e00-\u9fff\u3400-\u4dbf\U00020000-\U0002a6df]')
+_MULTI_WS_RE = re.compile(r'\s{2,}')
+_EOJEOL_RE = re.compile(r'[다요함됨임]\.*')
+
+
+def clean_summary(text: str) -> str:
+    """Summary 후처리: CJK 제거, 80자 truncate with sentence ending."""
+    cleaned = _CJK_RE.sub('', text.strip())
+    cleaned = _MULTI_WS_RE.sub(' ', cleaned).strip()
+    if len(cleaned) <= 80:
+        return cleaned
+    truncated = cleaned[:80]
+    last_end = -1
+    for m in _EOJEOL_RE.finditer(truncated):
+        last_end = m.end()
+    if last_end > 20:
+        return truncated[:last_end]
+    last_space = truncated.rfind(' ')
+    if last_space > 20:
+        return truncated[:last_space] + '.'
+    return truncated + '.'
 
 
 class ContentType(str, Enum):
@@ -146,22 +171,16 @@ class TopicClassification(BaseModel):
             for ct in ContentType:
                 if ct.value == v_lower:
                     return ct
-            # fuzzy match
+            # aliases only (exact enum values already handled above)
             mapping = {
-                "tutorial": ContentType.TUTORIAL,
                 "how-to": ContentType.TUTORIAL,
                 "guide": ContentType.TUTORIAL,
-                "deep-dive": ContentType.DEEP_DIVE,
                 "deepdive": ContentType.DEEP_DIVE,
                 "analysis": ContentType.DEEP_DIVE,
-                "postmortem": ContentType.POSTMORTEM,
                 "post-mortem": ContentType.POSTMORTEM,
                 "incident": ContentType.POSTMORTEM,
-                "case-study": ContentType.CASE_STUDY,
                 "casestudy": ContentType.CASE_STUDY,
-                "announcement": ContentType.ANNOUNCEMENT,
                 "release": ContentType.ANNOUNCEMENT,
-                "opinion": ContentType.OPINION,
                 "essay": ContentType.OPINION,
             }
             if v_lower in mapping:
@@ -172,23 +191,4 @@ class TopicClassification(BaseModel):
     def coerce_summary(cls, v):
         if not v or not isinstance(v, str):
             return "N/A"
-        import re
-        cleaned = v.strip()
-        # CJK Unified Ideographs (한자/중국어) 제거
-        cleaned = re.sub(r'[\u4e00-\u9fff\u3400-\u4dbf\U00020000-\U0002a6df]', '', cleaned)
-        cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip()
-        if len(cleaned) <= 80:
-            return cleaned
-        # 80자 이내에서 마지막 온전한 문장(종결어미/마침표)으로 자르기
-        truncated = cleaned[:80]
-        # 종결 위치 찾기: 다/다./합니다/한다/이다/있다/했다/된다/etc + optional period
-        last_end = -1
-        for m in re.finditer(r'[다요함됨임]\.*', truncated):
-            last_end = m.end()
-        if last_end > 20:
-            return truncated[:last_end]
-        # 종결어미 못 찾으면 마지막 공백에서 자르고 마침표 추가
-        last_space = truncated.rfind(' ')
-        if last_space > 20:
-            return truncated[:last_space] + '.'
-        return truncated + '.'
+        return clean_summary(v)

@@ -18,32 +18,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from db_conn import Connection
 from config import LLM_CONFIG, VLLM_BASE_URL
+from llm_pipeline.schemas import clean_summary, _CJK_RE
 from langchain_openai import ChatOpenAI
 from sqlalchemy import text
 
 UPDATE_SQL = text("UPDATE article SET summary = :summary WHERE article_id = :article_id")
 
-# CJK 제거 함수
-def clean_summary(s: str) -> str:
-    s = re.sub(r'[\u4e00-\u9fff\u3400-\u4dbf\U00020000-\U0002a6df]', '', s)
-    s = re.sub(r'\s{2,}', ' ', s).strip()
-    if len(s) <= 80:
-        return s
-    truncated = s[:80]
-    last_end = -1
-    for m in re.finditer(r'[다요함됨임]\.*', truncated):
-        last_end = m.end()
-    if last_end > 20:
-        return truncated[:last_end]
-    last_space = truncated.rfind(' ')
-    if last_space > 20:
-        return truncated[:last_space] + '.'
-    return truncated + '.'
-
-
-def is_korean(s: str) -> bool:
-    """한글 문자가 하나라도 있으면 True"""
-    return bool(re.search(r'[\uac00-\ud7a3\u3131-\u318e]', s))
+_KOREAN_RE = re.compile(r'[\uac00-\ud7a3\u3131-\u318e]')
 
 
 async def translate_to_korean(llm: ChatOpenAI, eng_summary: str, semaphore) -> str:
@@ -51,8 +32,7 @@ async def translate_to_korean(llm: ChatOpenAI, eng_summary: str, semaphore) -> s
     prompt = f"다음 영문을 한국어 한 문장(80자 이내)으로 번역하라. 종결어미(~다/~한다)로 끝내라. 한자 사용 금지.\n\n{eng_summary}"
     async with semaphore:
         response = await llm.ainvoke(prompt)
-    result = response.content.strip() if hasattr(response, 'content') else str(response).strip()
-    return clean_summary(result)
+    return clean_summary(response.content.strip())
 
 
 async def main():
@@ -93,9 +73,8 @@ async def main():
 
         tasks = []
         for r in batch:
-            s = r.get("summary") or ""
-            if not s or s == "N/A" or not s.strip():
-                # summary 자체가 없으면 스킵 (전체 분류 backfill 필요)
+            s = r.get("summary", "")
+            if not s or s == "N/A":
                 continue
             tasks.append((r["article_id"], translate_to_korean(llm, s, semaphore)))
 
@@ -112,7 +91,7 @@ async def main():
             if isinstance(result, Exception):
                 failed += 1
                 continue
-            if not is_korean(result):
+            if not _KOREAN_RE.search(result):
                 failed += 1
                 continue
             update_rows.append({"article_id": aid, "summary": result})
@@ -121,7 +100,6 @@ async def main():
             await asyncio.to_thread(conn.session_execute, UPDATE_SQL, update_rows)
 
         updated += len(update_rows)
-        failed += (len(tasks) - len(update_rows))
         elapsed = time.time() - t_start
         rate = updated / elapsed if elapsed > 0 else 0
         remaining = total - batch_start - batch_size
