@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from db_conn import Connection
 from llm_pipeline.model import LangChainModel
-from config import LLM_CONFIG, ENABLE_INFERENCE_LOG
+from config import LLM_CONFIG, ENABLE_INFERENCE_LOG, PROMPT_VERSION
 from llm_pipeline.inference_logger import InferenceLogger
 from sqlalchemy import text
 
@@ -28,7 +28,8 @@ UPDATE_SQL = text("""
         keywords = :keywords,
         difficulty = :difficulty,
         content_type = :content_type,
-        summary = :summary
+        summary = :summary,
+        prompt_version = :prompt_version
     WHERE article_id = :article_id
 """)
 
@@ -57,6 +58,7 @@ async def classify_one(model: LangChainModel, article_id: str, llm_query: str,
             "difficulty": inference.parsed.difficulty,
             "content_type": inference.parsed.content_type.value if inference.parsed.content_type else None,
             "summary": inference.parsed.summary,
+            "prompt_version": PROMPT_VERSION,
             "success": True,
             "inference": inference,
         }
@@ -141,6 +143,7 @@ async def main_async(args):
                 "difficulty": result["difficulty"],
                 "content_type": result["content_type"],
                 "summary": result["summary"],
+                "prompt_version": result["prompt_version"],
             })
 
             if inf_logger:

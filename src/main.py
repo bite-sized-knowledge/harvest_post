@@ -14,7 +14,7 @@ from qdrant_config import QdrantVectorStore
 from config import (
     INSERT_QUERY, QUEUE_QUERY, COLUMN_NAMES, get_metadata, update_model_config_query,
     REJECTED_INSERT_QUERY, QUALITY_REJECT_THRESHOLD,
-    ENABLE_INFERENCE_LOG, LLM_CONFIG,
+    ENABLE_INFERENCE_LOG, LLM_CONFIG, PROMPT_VERSION,
 )
 from response import HTTPResponse
 from llm_pipeline import LangChainModel
@@ -211,6 +211,7 @@ async def process_article(data):
             predict.difficulty,
             predict.content_type.value if predict.content_type else None,
             predict.summary,
+            PROMPT_VERSION,
             created_at,
             updated_at,
             published_at,
@@ -261,6 +262,7 @@ async def process_embedding(row: dict, embedder: TextEmbeddings) -> dict:
                 "quality_score": row.get("quality_score"),
                 "difficulty": row.get("difficulty"),
                 "content_type": row.get("content_type"),
+                "prompt_version": row.get("prompt_version"),
                 "blog_id": row.get("blog_id"),
                 "content_length": row.get("content_length"),
                 "lang": row.get("lang"),

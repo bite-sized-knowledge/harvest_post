@@ -24,6 +24,10 @@ VLLM_BASE_URL = os.getenv('VLLM_BASE_URL', 'http://vllm-chat:8000/v1')
 # ---------- Inference Logging ----------
 ENABLE_INFERENCE_LOG = os.getenv('ENABLE_INFERENCE_LOG', '0') == '1'
 
+# ---------- Prompt Version ----------
+# v1: original (category only), v2: +category descriptions, v3: +difficulty/content_type/summary/few-shot
+PROMPT_VERSION = "v3"
+
 
 # ---------- LLM Configuration (Single Source of Truth) ----------
 @dataclass(frozen=True)
@@ -60,13 +64,13 @@ os.environ['CHUNK_SIZE'] = str(CHUNK_SIZE)
 COLUMN_NAMES = [
     'article_id', 'blog_id', 'url', 'title', 'thumbnail',
     'description', 'keywords', 'category_id', 'content', 'content_length',
-    'lang', 'quality_score', 'difficulty', 'content_type', 'summary',
+    'lang', 'quality_score', 'difficulty', 'content_type', 'summary', 'prompt_version',
     'created_at', 'updated_at', 'published_at'
 ]
 
 UPSERT_COLUMNS = [
     'keywords', 'category_id', 'content', 'content_length', 'lang',
-    'quality_score', 'difficulty', 'content_type', 'summary', 'updated_at'
+    'quality_score', 'difficulty', 'content_type', 'summary', 'prompt_version', 'updated_at'
 ]
 
 def build_upsert_query(table_name: str, column_names: list, upsert_columns: list) -> str:
