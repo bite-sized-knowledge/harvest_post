@@ -30,9 +30,14 @@ class Connection:
         connect_args = {}
         # SSL 활성화 (require_secure_transport=ON 대응)
         import ssl
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
+        ca_path = os.getenv("DB_TLS_CA")
+        if ca_path:
+            ssl_ctx = ssl.create_default_context(cafile=ca_path)
+            ssl_ctx.check_hostname = False  # self-signed CN doesn't match Docker service name
+        else:
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
         connect_args['ssl'] = ssl_ctx
         return create_engine(
             DATABASE_URL,

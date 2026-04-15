@@ -33,7 +33,8 @@ cd "$SCRIPT_DIR"
 log "git pull origin prod"
 git pull --rebase origin prod || log "WARN: git pull failed, continuing with existing checkout"
 
-# --- 2. Force DB_NAME to production regardless of stored .env value ---
+# --- 2. Sync secrets from Doppler and force DB_NAME to production ---
+cp .env.doppler .env 2>/dev/null || true
 sed -i 's/^DB_NAME=.*/DB_NAME=bite/' .env
 
 # --- 3. Bring up the stack (vllm-chat + vllm-embed + harvest-post) ---

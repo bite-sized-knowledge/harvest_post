@@ -12,20 +12,13 @@ StandardOutput=journal
 StandardError=journal
 TimeoutStartSec=3600
 
-# DB credentials — used by scripts/sync_bite_to_dev.py and by the
-# harvest-post container (via .env merging). vLLM endpoint URLs are NOT
-# set here: they belong to the container network and are configured in
-# docker-compose.gpu.yml's `environment:` section.
-Environment=ARTICLE_TABLE=article
-Environment=DB_HOST=192.168.219.104
-Environment=DB_PORT=3306
-Environment=DB_USER=bite-dev
-Environment=DB_PASSWORD=qkdlxm!
-Environment=DB_NAME=bite
-Environment=QDRANT_HOST=http://192.168.219.104
+# Secrets are fetched from Doppler before each run.
+# Non-secret config that Doppler doesn't manage:
 Environment=QDRANT_PROD_PORT=6333
 Environment=QDRANT_DEV_PORT=6335
-Environment=LIMIT=50
+Environment=PATH=/home/siroo/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStartPre=/bin/bash -c '/home/siroo/.local/bin/doppler secrets download --project harvest_post --config prd --format env --no-file > /home/siroo/harvest_post/.env.doppler.tmp && mv /home/siroo/harvest_post/.env.doppler.tmp /home/siroo/harvest_post/.env.doppler'
+EnvironmentFile=/home/siroo/harvest_post/.env.doppler
 
 [Install]
 WantedBy=multi-user.target
