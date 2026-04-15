@@ -32,7 +32,7 @@ REASON_LOW_QUALITY_PREFIX = "low_quality"
 
 # Concurrency limits (vLLM continuous batching 활용)
 LLM_SEMAPHORE = asyncio.Semaphore(16)  # vLLM continuous batching
-EMBEDDING_SEMAPHORE = asyncio.Semaphore(4)  # Ollama 임베딩 병렬
+EMBEDDING_SEMAPHORE = asyncio.Semaphore(4)  # CPU 임베딩 병렬
 
 # Call Preprocessor
 PREPROCESSOR = BlogPostProcessor()
@@ -235,7 +235,7 @@ async def process_article(data):
 async def process_embedding(row: dict, embedder: TextEmbeddings) -> dict:
     """개별 row에 대해 임베딩 생성"""
     async with EMBEDDING_SEMAPHORE:
-        print(f"[Ollama Embedding] Embedding {row['article_id']}...")
+        print(f"[Embedding] {row['article_id']}...")
         embedding = await embedder(
             title=row["title"],
             description=row.get("description", ""),
@@ -273,7 +273,7 @@ def lambda_handler(event=None, context=None):
     return asyncio.run(main_async())
 
 
-async def main_async():
+async def main_async(embedder=None, store=None):
     logger.info("Harvest post started", stage="init")
     conn = Connection()
 
@@ -382,9 +382,9 @@ async def main_async():
             d = dict(zip(COLUMN_NAMES, values))
             insert_dicts.append(d)
 
-        print(f"[Ollama Embedding & Qdrant] Process Starting...")
-        embedder = TextEmbeddings()
-        store = QdrantVectorStore(
+        print(f"[Embedding & Qdrant] Process Starting...")
+        embedder = embedder or TextEmbeddings()
+        store = store or QdrantVectorStore(
             collection_name="bite-vectordb",
             vector_dim=int(os.getenv("EMBEDDING_SIZE")),
         )
@@ -455,13 +455,19 @@ async def run_continuous():
     batch_num = 0
     total_processed = 0
 
+    embedder = TextEmbeddings()
+    store = QdrantVectorStore(
+        collection_name="bite-vectordb",
+        vector_dim=int(os.getenv("EMBEDDING_SIZE")),
+    )
+
     while True:
         batch_num += 1
         print(f"\n{'='*60}")
         print(f"[BATCH {batch_num}] Starting... (total processed so far: {total_processed})")
         print(f"{'='*60}")
 
-        result = await main_async()
+        result = await main_async(embedder=embedder, store=store)
         status_code = result.get('statusCode', 500)
 
         if status_code == 200:  # Queue empty

@@ -1,5 +1,6 @@
 import os
 import asyncio
+import threading
 from typing import List
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from numpy.linalg import norm
@@ -22,8 +23,6 @@ class TextEmbeddings:
         chunk_size: int = None,
         chunk_overlap: int = 200
     ):
-        from sentence_transformers import SentenceTransformer
-
         self.model_name = model or EMBEDDING_CONFIG.model
         self.chunk_size = chunk_size or int(os.getenv("CHUNK_SIZE", 5000))
         self.chunk_overlap = chunk_overlap
@@ -32,17 +31,19 @@ class TextEmbeddings:
             chunk_overlap=self.chunk_overlap,
             separators=["\n\n", "\n", ".", " ", ""]
         )
-        # Lazy-load on first use so container startup isn't blocked.
         self._model = None
+        self._lock = threading.Lock()
 
     def _get_model(self):
         if self._model is None:
-            from sentence_transformers import SentenceTransformer
-            self._model = SentenceTransformer(
-                self.model_name,
-                device="cpu",
-                trust_remote_code=True,
-            )
+            with self._lock:
+                if self._model is None:
+                    from sentence_transformers import SentenceTransformer
+                    self._model = SentenceTransformer(
+                        self.model_name,
+                        device="cpu",
+                        trust_remote_code=True,
+                    )
         return self._model
 
     def _embed_once(self, text: str, dimensions: int, normalize: bool) -> List[float]:
