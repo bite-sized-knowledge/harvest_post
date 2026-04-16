@@ -17,7 +17,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from db_conn import Connection
 from llm_pipeline.model import LangChainModel
-from config import LLM_CONFIG, ENABLE_INFERENCE_LOG, PROMPT_VERSION, QUALITY_REJECT_THRESHOLD
+from config import (
+    LLM_CONFIG, ENABLE_INFERENCE_LOG, PROMPT_VERSION, QUALITY_REJECT_THRESHOLD,
+    REJECTED_INSERT_QUERY,
+)
 from llm_pipeline.inference_logger import InferenceLogger
 from sqlalchemy import text
 
@@ -32,6 +35,19 @@ UPDATE_SQL = text("""
         prompt_version = :prompt_version
     WHERE article_id = :article_id
 """)
+
+# Articles dropping below the quality gate must be removed from article and
+# mirrored into article_rejected to match the live pipeline's behavior
+# (main.py:184-190). Leaving them in article would yield stale, low-quality rows.
+REJECT_ARTICLE_SQL = text("""
+    INSERT IGNORE INTO article_rejected
+        (article_id, blog_id, url, title, thumbnail, description, content,
+         content_length, lang, published_at, quality_score, reject_reason)
+    SELECT article_id, blog_id, url, title, thumbnail, description, content,
+           content_length, lang, published_at, :quality_score, :reject_reason
+    FROM article WHERE article_id = :article_id
+""")
+DELETE_ARTICLE_SQL = text("DELETE FROM article WHERE article_id = :article_id")
 
 
 def build_llm_query(title: str, description: str, content: str) -> str:
@@ -82,11 +98,13 @@ async def main_async(args):
             temperature=LLM_CONFIG.temperature,
         )
 
-    # 전체 article 로드
+    # Skip articles already classified with the current prompt version so reruns
+    # are idempotent and don't re-pay the LLM cost for rows we've already handled.
     limit_clause = f"LIMIT {args.limit}" if args.limit else ""
     query = f"""
         SELECT article_id, title, description, content, category_id, quality_score
         FROM article
+        WHERE prompt_version IS NULL OR prompt_version != '{PROMPT_VERSION}'
         ORDER BY published_at DESC
         {limit_clause}
     """
@@ -99,6 +117,7 @@ async def main_async(args):
     # 배치 처리
     batch_size = 50
     updated = 0
+    rejected = 0
     failed = 0
     changed_cat = 0
     t_start = time.time()
@@ -120,6 +139,7 @@ async def main_async(args):
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         update_rows = []
+        reject_rows = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 print(f"  [ERROR] {batch[i]['article_id']}: {result}")
@@ -136,7 +156,11 @@ async def main_async(args):
                 changed_cat += 1
 
             if result["quality_score"] < QUALITY_REJECT_THRESHOLD:
-                print(f"  [SKIP] {result['article_id']}: quality_score={result['quality_score']} below threshold {QUALITY_REJECT_THRESHOLD}")
+                reject_rows.append({
+                    "article_id": result["article_id"],
+                    "quality_score": result["quality_score"],
+                    "reject_reason": f"low_quality_{result['quality_score']}",
+                })
                 continue
 
             update_rows.append({
@@ -158,14 +182,20 @@ async def main_async(args):
                     outcome="backfill",
                 )
 
-        if update_rows and not args.dry_run:
-            await asyncio.to_thread(conn.session_execute, UPDATE_SQL, update_rows)
+        if not args.dry_run:
+            if update_rows:
+                await asyncio.to_thread(conn.session_execute, UPDATE_SQL, update_rows)
+            if reject_rows:
+                await asyncio.to_thread(conn.session_execute, REJECT_ARTICLE_SQL, reject_rows)
+                await asyncio.to_thread(conn.session_execute, DELETE_ARTICLE_SQL,
+                                        [{"article_id": r["article_id"]} for r in reject_rows])
 
         updated += len(update_rows)
+        rejected += len(reject_rows)
         elapsed = time.time() - t_start
         rate = updated / elapsed if elapsed > 0 else 0
         eta = (total - batch_start - batch_size) / rate if rate > 0 else 0
-        print(f"  Updated: {len(update_rows)}, Changed cat: {changed_cat}, Rate: {rate:.1f}/s, ETA: {eta:.0f}s")
+        print(f"  Updated: {len(update_rows)}, Rejected: {len(reject_rows)}, Changed cat: {changed_cat}, Rate: {rate:.1f}/s, ETA: {eta:.0f}s")
 
     # Flush inference logs
     if inf_logger:
@@ -173,7 +203,7 @@ async def main_async(args):
 
     elapsed = time.time() - t_start
     print(f"\n{'='*60}")
-    print(f"[DONE] {updated} updated, {failed} failed, {changed_cat} category changed")
+    print(f"[DONE] {updated} updated, {rejected} rejected, {failed} failed, {changed_cat} category changed")
     print(f"Time: {elapsed:.0f}s ({updated/elapsed:.1f} articles/s)")
     if args.dry_run:
         print("[DRY-RUN] No actual DB updates were made")
