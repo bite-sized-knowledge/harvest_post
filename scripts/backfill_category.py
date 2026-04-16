@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from db_conn import Connection
 from llm_pipeline.model import LangChainModel
-from config import LLM_CONFIG, ENABLE_INFERENCE_LOG, PROMPT_VERSION
+from config import LLM_CONFIG, ENABLE_INFERENCE_LOG, PROMPT_VERSION, QUALITY_REJECT_THRESHOLD
 from llm_pipeline.inference_logger import InferenceLogger
 from sqlalchemy import text
 
@@ -134,6 +134,10 @@ async def main_async(args):
             new_cat = result["category_id"]
             if old_cat != new_cat:
                 changed_cat += 1
+
+            if result["quality_score"] < QUALITY_REJECT_THRESHOLD:
+                print(f"  [SKIP] {result['article_id']}: quality_score={result['quality_score']} below threshold {QUALITY_REJECT_THRESHOLD}")
+                continue
 
             update_rows.append({
                 "article_id": result["article_id"],
