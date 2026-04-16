@@ -78,20 +78,24 @@ def sync_mysql(host: str, user: str, password: str) -> None:
 def sync_qdrant(host: str, prod_port: int, dev_port: int, collection: str) -> None:
     prod = f"http://{host}:{prod_port}"
     dev = f"http://{host}:{dev_port}"
+    api_key = os.getenv("QDRANT_API_KEY", "")
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["api-key"] = api_key
+
+    def _req(url: str, method: str = "GET", data=None) -> dict:
+        req = Request(url, method=method, headers=headers)
+        if data is not None:
+            req.data = json.dumps(data).encode()
+        return json.loads(urlopen(req).read())
 
     # ensure dev collection exists — if not, clone config from prod
     try:
-        config = json.loads(urlopen(f"{prod}/collections/{collection}").read())["result"]["config"]["params"]
+        config = _req(f"{prod}/collections/{collection}")["result"]["config"]["params"]
         try:
-            urlopen(f"{dev}/collections/{collection}")
+            _req(f"{dev}/collections/{collection}")
         except Exception:
-            req = Request(
-                f"{dev}/collections/{collection}",
-                method="PUT",
-                data=json.dumps({"vectors": config["vectors"]}).encode(),
-                headers={"Content-Type": "application/json"},
-            )
-            urlopen(req)
+            _req(f"{dev}/collections/{collection}", "PUT", {"vectors": config["vectors"]})
     except Exception as e:
         print(f"[WARN] Qdrant collection setup: {e}")
         return
@@ -104,13 +108,7 @@ def sync_qdrant(host: str, prod_port: int, dev_port: int, collection: str) -> No
         if offset:
             body["offset"] = offset
 
-        req = Request(
-            f"{prod}/collections/{collection}/points/scroll",
-            method="POST",
-            data=json.dumps(body).encode(),
-            headers={"Content-Type": "application/json"},
-        )
-        resp = json.loads(urlopen(req).read())
+        resp = _req(f"{prod}/collections/{collection}/points/scroll", "POST", body)
         points = resp["result"]["points"]
         if not points:
             break
@@ -119,13 +117,7 @@ def sync_qdrant(host: str, prod_port: int, dev_port: int, collection: str) -> No
             {"id": p["id"], "vector": p["vector"], "payload": p.get("payload", {})}
             for p in points
         ]
-        req = Request(
-            f"{dev}/collections/{collection}/points",
-            method="PUT",
-            data=json.dumps({"points": upsert}).encode(),
-            headers={"Content-Type": "application/json"},
-        )
-        urlopen(req)
+        _req(f"{dev}/collections/{collection}/points", "PUT", {"points": upsert})
 
         total += len(points)
         offset = resp["result"].get("next_page_offset")
