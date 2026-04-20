@@ -82,7 +82,7 @@ log "harvest-post exited with code $HARVEST_EXIT"
 # retries, skip shutdown so the next 3-hour cron can pick up where we
 # left off (and so the situation is visible instead of silently lost).
 verify_queue_count() {
-    python3 - <<'PYEOF' 2>/dev/null
+    python3 - <<'PYEOF'
 import os, ssl, sys
 import pymysql
 ctx = ssl.create_default_context()
@@ -143,7 +143,60 @@ else
     log "sync script not found, skipping dev sync"
 fi
 
+# --- 6.5. [NEW] Judge phase: re-evaluate rejected articles with HyperCLOVA X ---
+# Runs AFTER harvest-post's queue is drained and BEFORE shutdown. The Qwen
+# stack (gpu.yml) must be torn down first to free VRAM for the 14B judge.
+# Skip if:
+#   - SKIP_SHUTDOWN=1 (we're in investigation mode, don't burn more GPU cycles)
+#   - no new unaudited rejected rows (nothing to do)
+# Time budget protects the overall wake cycle: if audit would run long, it
+# hard-stops at 15m and leaves remaining rows for the next wake.
+if [ "$SKIP_SHUTDOWN" -eq 0 ]; then
+    set +e
+    REJECTED_NEW=$(cd "$SCRIPT_DIR/src" && python3 "$SCRIPT_DIR/scripts/review/count_unaudited.py" 2>/dev/null)
+    COUNT_RC=$?
+    set -e
+
+    if [ "$COUNT_RC" -ne 0 ] || [ -z "$REJECTED_NEW" ]; then
+        log "judge phase: count_unaudited failed (rc=$COUNT_RC) — skipping"
+    elif [ "$REJECTED_NEW" -eq 0 ]; then
+        log "judge phase: no unaudited rejected rows — skipping"
+    else
+        log "judge phase: $REJECTED_NEW unaudited rejected rows → starting judge stack"
+
+        # Free VRAM from the Qwen stack before starting the 14B judge model.
+        docker compose -f docker-compose.gpu.yml down
+
+        set +e
+        docker compose -f docker-compose.judge.yml up -d --wait --wait-timeout 300
+        JUDGE_UP_RC=$?
+        set -e
+
+        if [ "$JUDGE_UP_RC" -ne 0 ]; then
+            log "WARN: judge stack failed to come healthy (rc=$JUDGE_UP_RC) — skipping audit"
+            docker compose -f docker-compose.judge.yml down || true
+        else
+            # VLLM_JUDGE_URL is localhost because the audit script runs on the
+            # host, not inside a container. Port 8000 is exposed by judge.yml.
+            export VLLM_JUDGE_URL="http://localhost:8000/v1"
+
+            set +e
+            (cd "$SCRIPT_DIR/src" && python3 "$SCRIPT_DIR/scripts/review/audit_rejected.py" \
+                --since 24h --limit 200 --time-budget 15m)
+            AUDIT_RC=$?
+            (cd "$SCRIPT_DIR/src" && python3 "$SCRIPT_DIR/scripts/review/recover_rejected.py" \
+                --limit 200)
+            RECOVER_RC=$?
+            set -e
+            log "judge phase: audit rc=$AUDIT_RC, recover rc=$RECOVER_RC"
+
+            docker compose -f docker-compose.judge.yml down
+        fi
+    fi
+fi
+
 # --- 7. Tear down + power off (if verified clean) ---
+# Idempotent: if judge phase already tore down the Qwen stack, this is a no-op.
 log "docker compose down"
 docker compose -f docker-compose.gpu.yml down
 
