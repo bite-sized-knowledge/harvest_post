@@ -12,6 +12,8 @@ import numpy as np
 import uuid
 import os
 
+from logger import logger
+
 
 class QdrantVectorStore:
     def __init__(
@@ -27,16 +29,27 @@ class QdrantVectorStore:
         if os.getenv("ENVIRONMENT", "prod") == "prod":
             url = os.getenv("QDRANT_ENDPOINT")
 
+        api_key = os.getenv("QDRANT_API_KEY", None)
+        if not api_key:
+            logger.warning("QDRANT_API_KEY is not set — Qdrant requests will be unauthenticated")
+
         self.client = QdrantClient(
             url=url,
-            api_key=os.getenv("QDRANT_API", None),
+            api_key=api_key,
             prefer_grpc=False
         )
 
-        self._init_collection(distance)
+        self._init_collection(distance, url=url, has_api_key=bool(api_key))
 
-    def _init_collection(self, distance: Distance):
-        if not self.client.collection_exists(self.collection_name):
+    def _init_collection(self, distance: Distance, *, url: str, has_api_key: bool):
+        try:
+            exists = self.client.collection_exists(self.collection_name)
+        except Exception as e:
+            logger.error("Qdrant connection failed — pipeline will not be able to store embeddings",
+                         url=url, error=str(e), has_api_key=has_api_key)
+            raise
+        logger.info("Qdrant connection verified", url=url)
+        if not exists:
             self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=VectorParams(

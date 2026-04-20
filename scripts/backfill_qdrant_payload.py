@@ -8,7 +8,7 @@ Usage:
 Environment variables:
     DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT (or RDS_ variants)
     QDRANT_ENDPOINT (or QDRANT_HOST + QDRANT_PORT)
-    QDRANT_API (optional)
+    QDRANT_API_KEY (optional)
 """
 
 import os
@@ -27,7 +27,7 @@ def get_qdrant() -> QdrantClient:
         host = os.getenv("QDRANT_HOST", "localhost")
         port = os.getenv("QDRANT_PORT", "6333")
         url = f"{host}:{port}"
-    return QdrantClient(url=url, api_key=os.getenv("QDRANT_API"))
+    return QdrantClient(url=url, api_key=os.getenv("QDRANT_API_KEY"))
 
 
 def get_mysql():
