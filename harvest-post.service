@@ -10,7 +10,8 @@ WorkingDirectory=/home/siroo/harvest_post
 ExecStart=/home/siroo/harvest_post/run.sh
 StandardOutput=journal
 StandardError=journal
-TimeoutStartSec=3600
+TimeoutStartSec=5400
+TimeoutStopSec=60
 
 # Secrets are fetched from Doppler before each run.
 # Non-secret config that Doppler doesn't manage:

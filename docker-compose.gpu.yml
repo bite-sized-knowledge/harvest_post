@@ -1,18 +1,27 @@
 # Self-hosted GPU stack for harvest_post.
 #
-# Layout:
-#   vllm-chat  — Qwen3.5-9B-AWQ on :8000 (LLM classification + quality scoring)
-#   vllm-embed — Qwen3-Embedding-0.6B on :8001 (vector embeddings)
-#   harvest-post — Python batch job
+# Two mutually exclusive profiles — never run concurrently (VRAM constraint):
 #
-# VRAM budget: Qwen3.5-9B-AWQ needs ~14.4GB (weights + workspace) so it
-# gets the GPU exclusively at 0.95 utilization. The embedding model (0.6B)
-# runs on CPU — tiny enough that CPU inference is fast for our batch sizes.
+#   harvest  vllm-chat (Qwen3.5-9B-AWQ, :8000) + harvest-post batch job
+#   judge    vllm-judge (Qwen3-14B-AWQ, :8000)  — re-evaluates rejected articles
+#
+# VRAM budget (RTX 5060 Ti 16GB):
+#   Qwen3.5-9B-AWQ @ 0.95 → ~14.4GB (harvest)
+#   Qwen3-14B-AWQ  @ 0.9  → ~7-8GB  (judge)
+#
+# Usage:
+#   docker compose --profile harvest up -d --build --wait
+#   docker compose --profile harvest down
+#   docker compose --profile judge up -d --wait
+#   docker compose --profile judge down
+#   docker compose down   # tears down ALL services (safety net)
 #
 # HuggingFace cache is mounted from host so models persist across restarts.
 
 services:
+  # ── Harvest profile ────────────────────────────────────────────────
   vllm-chat:
+    profiles: ["harvest"]
     image: vllm/vllm-openai:latest
     container_name: gpu-vllm-chat
     runtime: nvidia
@@ -38,11 +47,12 @@ services:
       timeout: 5s
       retries: 40
       start_period: 120s
-    restart: unless-stopped
+    restart: "no"
     networks:
       - gpu-network
 
   harvest-post:
+    profiles: ["harvest"]
     build:
       context: .
       dockerfile: Dockerfile.gpu
@@ -58,6 +68,42 @@ services:
     networks:
       - gpu-network
     restart: "no"
+
+  # ── Judge profile ──────────────────────────────────────────────────
+  # Qwen3-14B-AWQ — independent LLM-as-judge for rejected article re-eval.
+  # Model choice trail (see git history):
+  #   1. HyperCLOVAX-SEED-Think-14B — Naver only released ≤3B open
+  #   2-3. LGAI-EXAONE — needs transformers>=4.58, vllm-openai has 4.57
+  #   4. Qwen2.5-14B-Instruct-AWQ — quality calibration weak
+  #   5. → Qwen/Qwen3-14B-AWQ [current]
+  vllm-judge:
+    profiles: ["judge"]
+    image: vllm/vllm-openai:latest
+    container_name: gpu-vllm-judge
+    runtime: nvidia
+    ipc: host
+    command: >
+      --model ${JUDGE_MODEL:-Qwen/Qwen3-14B-AWQ}
+      --served-model-name qwen3-judge
+      --max-model-len 8192
+      --gpu-memory-utilization 0.9
+      --quantization ${JUDGE_QUANT:-awq_marlin}
+      --enforce-eager
+      --port 8000
+      --host 0.0.0.0
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 180s
+    restart: "no"
+    networks:
+      - gpu-network
 
 networks:
   gpu-network:

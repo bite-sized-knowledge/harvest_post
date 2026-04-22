@@ -3,84 +3,70 @@
 #
 # Responsibilities:
 #   1. pull latest code from git (source of truth = origin/prod)
-#   2. bring up docker-compose stack: vllm-chat + vllm-embed + harvest-post
-#   3. wait for harvest-post container to finish draining article_queue
-#   4. sync bite → bite_dev
-#   5. tear down and power off
+#   2. bring up harvest profile: vllm-chat + harvest-post → drain article_queue
+#   3. bring up judge profile: vllm-judge → audit rejected articles
+#   4. tear down ALL containers and power off
 #
-# All stdout/stderr goes to systemd journal (no /var/log files). View via:
+# Safety mechanisms:
+#   - trap cleanup EXIT: guaranteed container teardown on any exit path
+#   - watchdog timer: forces shutdown after MAX_RUNTIME (90 min)
+#   - nuke_port_8000: kills orphan containers before each phase
+#   - always shutdown: no SKIP_SHUTDOWN — next cron wakes fresh
+#
+# All stdout/stderr goes to systemd journal. View via:
 #   journalctl -u harvest-post.service -f
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+COMPOSE_FILE="$SCRIPT_DIR/docker-compose.gpu.yml"
 MAC_IP="192.168.219.104"
+MAX_RUNTIME=5400  # 90 minutes hard cap
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }
 
-log "=== Harvest Post Started ==="
-
-# --- 0. Sanity: can we reach the Mac? ---
-if ! ping -c 1 -W 3 "$MAC_IP" > /dev/null 2>&1; then
-    log "ERROR: Cannot reach Mac ($MAC_IP). Aborting."
-    exit 1
-fi
-
-cd "$SCRIPT_DIR"
-
-# --- 1. Pull latest code ---
-# Deploy webhook may have already done this, but re-running is idempotent
-# and covers the cron-triggered wake path where no webhook ran.
-log "git pull origin prod"
-git pull --rebase origin prod || log "WARN: git pull failed, continuing with existing checkout"
-
-# --- 2. Sync secrets from Doppler and normalize for docker compose ---
-# - Strip quotes from values (Doppler outputs quoted strings; some docker
-#   compose versions pass them through verbatim, breaking DB auth)
-# - Force DB_NAME=bite (production)
-# - Derive QDRANT_ENDPOINT for prod-mode Python code path
-if [ -f .env.doppler ]; then
-    sed -E 's/^([A-Z_]+)="(.*)"$/\1=\2/' .env.doppler \
-        | sed 's/^DB_NAME=.*/DB_NAME=bite/' > .env
-    # QDRANT_ENDPOINT = QDRANT_HOST:QDRANT_PORT (required when ENVIRONMENT=prod)
-    if ! grep -q '^QDRANT_ENDPOINT=' .env; then
-        QHOST=$(grep '^QDRANT_HOST=' .env | cut -d'=' -f2-)
-        QPORT=$(grep '^QDRANT_PORT=' .env | cut -d'=' -f2-)
-        echo "QDRANT_ENDPOINT=${QHOST}:${QPORT}" >> .env
+# ── Watchdog: background process that forces shutdown after MAX_RUNTIME ──
+WATCHDOG_PID=""
+start_watchdog() {
+    (
+        sleep "$MAX_RUNTIME"
+        log "WATCHDOG: ${MAX_RUNTIME}s exceeded — forcing shutdown"
+        docker compose -f "$COMPOSE_FILE" --profile harvest --profile judge down --timeout 10 2>/dev/null || true
+        docker ps -q --filter "publish=8000" | xargs -r docker kill 2>/dev/null || true
+        sudo -n /usr/sbin/shutdown -h now
+    ) &
+    WATCHDOG_PID=$!
+}
+kill_watchdog() {
+    if [ -n "$WATCHDOG_PID" ]; then
+        kill "$WATCHDOG_PID" 2>/dev/null || true
+        wait "$WATCHDOG_PID" 2>/dev/null || true
+        WATCHDOG_PID=""
     fi
-fi
+}
 
-# Export .env so child processes (sync scripts) use fresh credentials
-# instead of potentially stale systemd Environment= values.
-set -a
-source .env
-set +a
+# ── Trap: guaranteed cleanup on ANY exit (normal, error, signal) ──
+cleanup() {
+    local exit_code=$?
+    log "CLEANUP: tearing down all containers (exit_code=$exit_code)"
+    docker compose -f "$COMPOSE_FILE" --profile harvest --profile judge down --timeout 30 2>/dev/null || true
+    # Nuclear: kill anything still holding port 8000
+    docker ps -q --filter "publish=8000" | xargs -r docker kill 2>/dev/null || true
+    kill_watchdog
+}
+trap cleanup EXIT
 
-# --- 3. Bring up the stack (vllm-chat + vllm-embed + harvest-post) ---
-# vLLM instances take 2-3 minutes to load the model + KV cache on first
-# boot after a machine power cycle. The default depends_on wait tolerance
-# is too tight, so we pass --wait-timeout 600 (10 minutes) to give the
-# stack plenty of room to come healthy before harvest-post kicks off.
-log "docker compose up -d --build --wait --wait-timeout 600"
-docker compose -f docker-compose.gpu.yml up -d --build --wait --wait-timeout 600
+# ── Pre-clean: kill orphan containers on port 8000 from previous runs ──
+nuke_port_8000() {
+    local holders
+    holders=$(docker ps -q --filter "publish=8000" 2>/dev/null || true)
+    if [ -n "$holders" ]; then
+        log "PRE-CLEAN: killing containers on port 8000"
+        echo "$holders" | xargs docker kill 2>/dev/null || true
+        sleep 2
+    fi
+}
 
-# --- 4. Wait for harvest-post container to exit ---
-# harvest-post CMD is `python3 -m main --continuous`, which exits after the
-# queue is empty. docker compose wait blocks until the container stops and
-# returns its exit code.
-log "waiting for harvest-post to finish"
-set +e
-docker compose -f docker-compose.gpu.yml wait harvest-post
-HARVEST_EXIT=$?
-set -e
-log "harvest-post exited with code $HARVEST_EXIT"
-
-# --- 5. Verification: confirm article_queue is actually drained ---
-# harvest-post may exit early (crash, LLM error, network hiccup) while
-# articles are still in the queue. Before we power down the GPU, verify
-# against the production DB and re-run the container up to MAX_VERIFY
-# times if anything remains. If the queue is still non-empty after the
-# retries, skip shutdown so the next 3-hour cron can pick up where we
-# left off (and so the situation is visible instead of silently lost).
+# ── DB helper: count articles remaining in queue ──
 verify_queue_count() {
     python3 - <<'PYEOF'
 import os, ssl, sys
@@ -108,12 +94,57 @@ except Exception as e:
 PYEOF
 }
 
+# ═══════════════════════════════════════════════════════════════════════
+log "=== Harvest Post Started ==="
+start_watchdog
+
+# --- 0. Sanity: can we reach the Mac? ---
+if ! ping -c 1 -W 3 "$MAC_IP" > /dev/null 2>&1; then
+    log "ERROR: Cannot reach Mac ($MAC_IP). Aborting."
+    exit 1
+fi
+
+cd "$SCRIPT_DIR"
+
+# --- 1. Pull latest code ---
+log "git pull origin prod"
+git pull --rebase origin prod || log "WARN: git pull failed, continuing with existing checkout"
+
+# --- 2. Sync secrets from Doppler and normalize for docker compose ---
+if [ -f .env.doppler ]; then
+    sed -E 's/^([A-Z_]+)="(.*)"$/\1=\2/' .env.doppler \
+        | sed 's/^DB_NAME=.*/DB_NAME=bite/' > .env
+    if ! grep -q '^QDRANT_ENDPOINT=' .env; then
+        QHOST=$(grep '^QDRANT_HOST=' .env | cut -d'=' -f2-)
+        QPORT=$(grep '^QDRANT_PORT=' .env | cut -d'=' -f2-)
+        echo "QDRANT_ENDPOINT=${QHOST}:${QPORT}" >> .env
+    fi
+fi
+
+set -a
+source .env
+set +a
+
+# --- 3. Harvest phase ---
+log "=== HARVEST PHASE ==="
+nuke_port_8000
+
+log "docker compose --profile harvest up -d --build --wait --wait-timeout 600"
+docker compose -f "$COMPOSE_FILE" --profile harvest up -d --build --wait --wait-timeout 600
+
+log "waiting for harvest-post to finish"
+set +e
+docker compose -f "$COMPOSE_FILE" --profile harvest wait harvest-post
+HARVEST_EXIT=$?
+set -e
+log "harvest-post exited with code $HARVEST_EXIT"
+
+# --- 4. Verify queue is drained, retry up to 2 times ---
 MAX_VERIFY=2
-SKIP_SHUTDOWN=0
 for attempt in $(seq 1 $MAX_VERIFY); do
     REMAINING=$(verify_queue_count || echo "")
     if [ -z "$REMAINING" ]; then
-        log "VERIFY: DB query failed — proceeding to shutdown without retry"
+        log "VERIFY: DB query failed — skipping retry"
         break
     fi
     if [ "$REMAINING" -eq 0 ]; then
@@ -121,92 +152,63 @@ for attempt in $(seq 1 $MAX_VERIFY); do
         break
     fi
     log "VERIFY attempt $attempt/$MAX_VERIFY: $REMAINING articles still in queue — re-running harvest-post"
-    docker compose -f docker-compose.gpu.yml up -d harvest-post
+    docker compose -f "$COMPOSE_FILE" --profile harvest up -d harvest-post
     set +e
-    docker compose -f docker-compose.gpu.yml wait harvest-post
+    docker compose -f "$COMPOSE_FILE" --profile harvest wait harvest-post
     HARVEST_EXIT=$?
     set -e
     log "harvest-post re-run exited with code $HARVEST_EXIT"
 done
 
-FINAL_REMAINING=$(verify_queue_count || echo "")
-if [ -n "$FINAL_REMAINING" ] && [ "$FINAL_REMAINING" -gt 0 ]; then
-    log "WARN: $FINAL_REMAINING articles remain after $MAX_VERIFY retries — SKIPPING shutdown (leaving GPU on for next cron to investigate)"
-    SKIP_SHUTDOWN=1
-fi
+FINAL_REMAINING=$(verify_queue_count || echo "?")
+log "harvest complete: $FINAL_REMAINING articles remaining"
 
-# --- 6. Sync bite → bite_dev (best-effort, do not fail overall run) ---
-if [ -f "$SCRIPT_DIR/scripts/sync_bite_to_dev.py" ]; then
-    log "syncing bite → bite_dev"
-    python3 "$SCRIPT_DIR/scripts/sync_bite_to_dev.py" || log "WARN: dev sync failed"
+# --- 5. Tear down harvest stack to free VRAM for judge ---
+log "docker compose --profile harvest down"
+docker compose -f "$COMPOSE_FILE" --profile harvest down --timeout 30
+
+# --- 6. Judge phase: re-evaluate rejected articles ---
+set +e
+REJECTED_NEW=$(cd "$SCRIPT_DIR/src" && python3 "$SCRIPT_DIR/scripts/review/count_unaudited.py" 2>/dev/null)
+COUNT_RC=$?
+set -e
+
+if [ "$COUNT_RC" -ne 0 ] || [ -z "$REJECTED_NEW" ]; then
+    log "judge phase: count_unaudited failed (rc=$COUNT_RC) — skipping"
+elif [ "$REJECTED_NEW" -eq 0 ]; then
+    log "judge phase: no unaudited rejected rows — skipping"
 else
-    log "sync script not found, skipping dev sync"
-fi
+    log "=== JUDGE PHASE: $REJECTED_NEW unaudited rejected rows ==="
+    nuke_port_8000
 
-# --- 6.5. [NEW] Judge phase: re-evaluate rejected articles with HyperCLOVA X ---
-# Runs AFTER harvest-post's queue is drained and BEFORE shutdown. The Qwen
-# stack (gpu.yml) must be torn down first to free VRAM for the 14B judge.
-# Skip if:
-#   - SKIP_SHUTDOWN=1 (we're in investigation mode, don't burn more GPU cycles)
-#   - no new unaudited rejected rows (nothing to do)
-# Time budget protects the overall wake cycle: if audit would run long, it
-# hard-stops at 15m and leaves remaining rows for the next wake.
-if [ "$SKIP_SHUTDOWN" -eq 0 ]; then
     set +e
-    REJECTED_NEW=$(cd "$SCRIPT_DIR/src" && python3 "$SCRIPT_DIR/scripts/review/count_unaudited.py" 2>/dev/null)
-    COUNT_RC=$?
+    docker compose -f "$COMPOSE_FILE" --profile judge up -d --wait --wait-timeout 300
+    JUDGE_UP_RC=$?
     set -e
 
-    if [ "$COUNT_RC" -ne 0 ] || [ -z "$REJECTED_NEW" ]; then
-        log "judge phase: count_unaudited failed (rc=$COUNT_RC) — skipping"
-    elif [ "$REJECTED_NEW" -eq 0 ]; then
-        log "judge phase: no unaudited rejected rows — skipping"
+    if [ "$JUDGE_UP_RC" -ne 0 ]; then
+        log "WARN: judge stack failed to come healthy (rc=$JUDGE_UP_RC) — skipping audit"
+        docker compose -f "$COMPOSE_FILE" --profile judge down --timeout 10 || true
     else
-        log "judge phase: $REJECTED_NEW unaudited rejected rows → starting judge stack"
-
-        # Free VRAM from the Qwen stack before starting the 14B judge model.
-        docker compose -f docker-compose.gpu.yml down
+        export VLLM_JUDGE_URL="http://localhost:8000/v1"
 
         set +e
-        docker compose -f docker-compose.judge.yml up -d --wait --wait-timeout 300
-        JUDGE_UP_RC=$?
+        (cd "$SCRIPT_DIR/src" && python3 "$SCRIPT_DIR/scripts/review/audit_rejected.py" \
+            --since 24h --limit 200 --time-budget 15m)
+        AUDIT_RC=$?
+        (cd "$SCRIPT_DIR/src" && python3 "$SCRIPT_DIR/scripts/review/recover_rejected.py" \
+            --limit 200)
+        RECOVER_RC=$?
         set -e
+        log "judge phase: audit rc=$AUDIT_RC, recover rc=$RECOVER_RC"
 
-        if [ "$JUDGE_UP_RC" -ne 0 ]; then
-            log "WARN: judge stack failed to come healthy (rc=$JUDGE_UP_RC) — skipping audit"
-            docker compose -f docker-compose.judge.yml down || true
-        else
-            # VLLM_JUDGE_URL is localhost because the audit script runs on the
-            # host, not inside a container. Port 8000 is exposed by judge.yml.
-            export VLLM_JUDGE_URL="http://localhost:8000/v1"
-
-            set +e
-            (cd "$SCRIPT_DIR/src" && python3 "$SCRIPT_DIR/scripts/review/audit_rejected.py" \
-                --since 24h --limit 200 --time-budget 15m)
-            AUDIT_RC=$?
-            (cd "$SCRIPT_DIR/src" && python3 "$SCRIPT_DIR/scripts/review/recover_rejected.py" \
-                --limit 200)
-            RECOVER_RC=$?
-            set -e
-            log "judge phase: audit rc=$AUDIT_RC, recover rc=$RECOVER_RC"
-
-            docker compose -f docker-compose.judge.yml down
-        fi
+        docker compose -f "$COMPOSE_FILE" --profile judge down --timeout 30
     fi
 fi
 
-# --- 7. Tear down + power off (if verified clean) ---
-# Idempotent: if judge phase already tore down the Qwen stack, this is a no-op.
-log "docker compose down"
-docker compose -f docker-compose.gpu.yml down
-
-if [ "$SKIP_SHUTDOWN" -eq 1 ]; then
-    log "=== Done. GPU LEFT ON for investigation (queue not drained). ==="
-    exit 0
-fi
-
+# --- 7. Shutdown (always) ---
+# The EXIT trap handles container cleanup if anything is still running.
+# Kill the watchdog since we're shutting down cleanly.
+kill_watchdog
 log "=== Done. Shutting down. ==="
-# -n forces non-interactive sudo — required because systemd runs this
-# script without a TTY. siroo has NOPASSWD configured for /usr/sbin/shutdown
-# so this succeeds without an askpass helper.
 sudo -n /usr/sbin/shutdown -h now
