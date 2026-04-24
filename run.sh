@@ -7,6 +7,10 @@
 #   3. bring up judge profile: vllm-judge → audit rejected articles
 #   4. tear down ALL containers and power off
 #
+# Modes:
+#   ./run.sh               — full pipeline (harvest + judge + recover)
+#   ./run.sh --recover-only — skip harvest+judge, just run recover_rejected.py
+#
 # Safety mechanisms:
 #   - trap cleanup EXIT: guaranteed container teardown on any exit path
 #   - watchdog timer: forces shutdown after MAX_RUNTIME (90 min)
@@ -16,6 +20,11 @@
 # All stdout/stderr goes to systemd journal. View via:
 #   journalctl -u harvest-post.service -f
 set -euo pipefail
+
+RECOVER_ONLY=false
+if [ "${1:-}" = "--recover-only" ]; then
+    RECOVER_ONLY=true
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.gpu.yml"
@@ -124,6 +133,22 @@ fi
 set -a
 source .env
 set +a
+
+# --- 3. Recover-only mode: skip harvest+judge, just recover pending FPs ---
+if [ "$RECOVER_ONLY" = true ]; then
+    log "=== RECOVER-ONLY MODE ==="
+    set +e
+    (cd "$SCRIPT_DIR/src" && python3 "$SCRIPT_DIR/scripts/review/recover_rejected.py" \
+        --limit 200)
+    RECOVER_RC=$?
+    set -e
+    log "recover-only complete: rc=$RECOVER_RC"
+
+    kill_watchdog
+    log "=== Done (recover-only). Shutting down. ==="
+    sudo -n /usr/sbin/shutdown -h now
+    exit 0
+fi
 
 # --- 3. Harvest phase ---
 log "=== HARVEST PHASE ==="
