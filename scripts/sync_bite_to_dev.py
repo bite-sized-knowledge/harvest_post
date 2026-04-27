@@ -1,5 +1,5 @@
 """
-Mirror production bite DB + Qdrant collection to the dev environment.
+Mirror production bite DB content tables to the dev environment.
 
 Invoked from run.sh after a successful harvest cycle, and from the
 daily 04:00 cron (`infra/scripts/sync-prod-to-dev.sh`). Safe to run
@@ -18,18 +18,17 @@ Deletion semantics:
     (typically moved to article_rejected by backfill) are DELETED. This
     is what keeps dev from accumulating stale bad articles.
   * bite_dev.article_queue / article_rejected — full snapshot replace.
-  * Qdrant dev collection — points whose ids are absent from prod are
-    DELETED so the vector store matches the MySQL `article` table.
+
+Qdrant은 prod/dev가 단일 인스턴스/단일 컬렉션을 공유하므로 벡터 동기화는 불필요.
+같은 article_id가 양쪽 환경에서 그대로 통한다.
 
 Credentials are read from environment variables (DB_HOST, DB_USER,
-DB_PASSWORD, QDRANT_API_KEY). NO hardcoded passwords.
+DB_PASSWORD). NO hardcoded passwords.
 """
 
-import json
 import os
 import ssl
 import sys
-from urllib.request import Request, urlopen
 
 import pymysql
 
@@ -129,93 +128,6 @@ def sync_mysql(host: str, user: str, password: str) -> None:
     print(f"[SYNC] MySQL bite → bite_dev done (stale article rows removed: {stale_removed})")
 
 
-def _qdrant_req(url: str, headers: dict, method: str = "GET", data=None) -> dict:
-    req = Request(url, method=method, headers=headers)
-    if data is not None:
-        req.data = json.dumps(data).encode()
-    return json.loads(urlopen(req).read())
-
-
-def _scroll_ids(base: str, headers: dict, collection: str, with_vector: bool) -> list:
-    """Scroll every point in a collection; return list of (id, payload, vector_or_None)."""
-    points = []
-    offset = None
-    while True:
-        body = {"limit": 256, "with_payload": True, "with_vector": with_vector}
-        if offset is not None:
-            body["offset"] = offset
-        resp = _qdrant_req(f"{base}/collections/{collection}/points/scroll", headers, "POST", body)
-        batch = resp["result"]["points"]
-        if not batch:
-            break
-        points.extend(batch)
-        offset = resp["result"].get("next_page_offset")
-        if offset is None:
-            break
-    return points
-
-
-def sync_qdrant(host: str, prod_port: int, dev_port: int, collection: str) -> None:
-    prod = f"http://{host}:{prod_port}"
-    dev = f"http://{host}:{dev_port}"
-    api_key = os.getenv("QDRANT_API_KEY", "")
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["api-key"] = api_key
-
-    # ensure dev collection exists — if not, clone vectors config from prod
-    try:
-        config = _qdrant_req(f"{prod}/collections/{collection}", headers)["result"]["config"]["params"]
-        try:
-            _qdrant_req(f"{dev}/collections/{collection}", headers)
-        except Exception:
-            _qdrant_req(f"{dev}/collections/{collection}", headers, "PUT", {"vectors": config["vectors"]})
-    except Exception as e:
-        print(f"[WARN] Qdrant collection setup: {e}")
-        return
-
-    # Upsert prod → dev in batches
-    offset = None
-    total_upserted = 0
-    prod_ids = set()
-    while True:
-        body = {"limit": 100, "with_payload": True, "with_vector": True}
-        if offset is not None:
-            body["offset"] = offset
-        resp = _qdrant_req(f"{prod}/collections/{collection}/points/scroll", headers, "POST", body)
-        batch = resp["result"]["points"]
-        if not batch:
-            break
-
-        upsert = [{"id": p["id"], "vector": p["vector"], "payload": p.get("payload", {})} for p in batch]
-        _qdrant_req(f"{dev}/collections/{collection}/points", headers, "PUT", {"points": upsert})
-        prod_ids.update(p["id"] for p in batch)
-        total_upserted += len(batch)
-
-        offset = resp["result"].get("next_page_offset")
-        if offset is None:
-            break
-
-    # Diff-delete: dev points whose id is absent from prod
-    dev_points = _scroll_ids(dev, headers, collection, with_vector=False)
-    dev_ids = {p["id"] for p in dev_points}
-    to_delete = list(dev_ids - prod_ids)
-    if to_delete:
-        # Qdrant accepts up to ~100k ids per request, chunk conservatively.
-        CHUNK = 1000
-        for i in range(0, len(to_delete), CHUNK):
-            _qdrant_req(
-                f"{dev}/collections/{collection}/points/delete",
-                headers,
-                "POST",
-                {"points": to_delete[i : i + CHUNK]},
-            )
-    print(
-        f"[SYNC] Qdrant prod → dev done "
-        f"(upserted {total_upserted}, deleted {len(to_delete)} stale dev-only points)"
-    )
-
-
 def main() -> int:
     host = os.getenv("DB_HOST") or "192.168.219.104"
     user = os.getenv("DB_USER")
@@ -229,14 +141,6 @@ def main() -> int:
     except Exception as e:
         print(f"[ERROR] MySQL sync failed: {e}", file=sys.stderr)
         return 2
-
-    qdrant_prod_port = int(os.getenv("QDRANT_PROD_PORT", "6333"))
-    qdrant_dev_port = int(os.getenv("QDRANT_DEV_PORT", "6335"))
-    try:
-        sync_qdrant(host, qdrant_prod_port, qdrant_dev_port, "bite-vectordb")
-    except Exception as e:
-        print(f"[ERROR] Qdrant sync failed: {e}", file=sys.stderr)
-        return 3
 
     return 0
 
