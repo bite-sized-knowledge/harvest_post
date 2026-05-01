@@ -174,8 +174,13 @@ def build_get_queue_query(table_name: str) -> str:
         FROM
             {table_name}
         ORDER BY RAND()
-        LIMIT {os.getenv('LIMIT', 10)}
+        LIMIT {os.getenv('LIMIT', 10000)}
         """
+        # LIMIT 기본값 10000: 사실상 큐 전체. 과거 Lambda 비용 제한 때문에 10이었으나
+        # 지금은 홈서버 GPU(vLLM) 환경이라 동시성/비용 제약 없음. 한 사이클에 큐 전부
+        # 갈아넣어 article_queue 적체를 방지. concurrency는 main.py의
+        # LLM_SEMAPHORE(=16) / EMBEDDING_SEMAPHORE(=4)로 여전히 보호됨.
+        # 비정상적으로 큰 큐에서 메모리/타임아웃이 문제되면 ENV LIMIT으로 일시 제한.
 
     # if os.getenv('ENVIRONMENT') == "dev":
     #     query = f"""

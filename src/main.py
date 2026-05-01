@@ -31,9 +31,16 @@ REASON_EMPTY_CONTENT = "empty_content"
 REASON_LLM_FAILED = "llm_extraction_failed"
 REASON_LOW_QUALITY_PREFIX = "low_quality"
 
-# Concurrency limits (vLLM continuous batching 활용)
-LLM_SEMAPHORE = asyncio.Semaphore(16)  # vLLM continuous batching
-EMBEDDING_SEMAPHORE = asyncio.Semaphore(4)  # CPU 임베딩 병렬
+# Concurrency limits — 홈서버(GPU RTX 5060 Ti 16GB / CPU Ryzen 7 2700 16T / RAM 62GB) 기준.
+# LLM: vLLM-chat 컨테이너의 continuous batching이 받음. KV cache 한도 (Qwen2.5-9B AWQ +
+#   max_model_len 32768, 본문 6000자 truncate ≈ 2-3K 토큰/req) 안에서 32 동시 안전.
+#   64는 KV pressure로 OOM 위험.
+# Embedding: Qwen3-Embedding 0.6B sentence-transformers를 CPU로 in-process 추론
+#   (vLLM-chat이 GPU VRAM 다 점유해서 GPU 못 씀, embedder.py 참고). PyTorch는 한 호출이
+#   모든 코어를 다 먹을 수 있어 oversubscription 위험 — CPU 16T에 동시 8 정도가 안전한
+#   throughput 최대점. 늘리면 contention으로 오히려 느려짐.
+LLM_SEMAPHORE = asyncio.Semaphore(32)
+EMBEDDING_SEMAPHORE = asyncio.Semaphore(8)
 
 # Call Preprocessor
 PREPROCESSOR = BlogPostProcessor()
