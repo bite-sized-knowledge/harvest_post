@@ -38,6 +38,12 @@ class TextEmbeddings:
         if self._model is None:
             with self._lock:
                 if self._model is None:
+                    # PyTorch CPU 추론은 default로 한 호출이 모든 코어를 다 먹는다.
+                    # EMBEDDING_SEMAPHORE=8과 합쳐지면 8 × 16T oversubscription으로
+                    # 175건이 46분+ 직렬화 hang 됨 (recover_rejected.py 사고). thread 2개씩
+                    # 잡아 8 동시 호출 = 16T로 정확히 분배. ENV로 override 가능.
+                    import torch
+                    torch.set_num_threads(int(os.getenv("TORCH_CPU_THREADS", "2")))
                     from sentence_transformers import SentenceTransformer
                     self._model = SentenceTransformer(
                         self.model_name,
