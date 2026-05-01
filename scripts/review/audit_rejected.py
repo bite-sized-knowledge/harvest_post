@@ -37,6 +37,7 @@ from typing import Optional
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from db_conn import Connection
+from observability import JobRun
 from llm_pipeline.judge import (
     JUDGE_MODEL_KEY,
     JUDGE_MODEL_VERSION,
@@ -405,6 +406,28 @@ async def _wait_for_judge(judge: LocalJudge, timeout: int = 60) -> None:
     print(f"[JUDGE] WARN: /health not ready within {timeout}s — proceeding anyway")
 
 
+async def run_audit_tracked(args) -> AuditSummary:
+    """Wrap run_audit with a JobRun row so monitor can show last audit run + counters."""
+    conn = Connection()
+    try:
+        with JobRun(conn, "audit_rejected") as job:
+            summary = await run_audit(args)
+            # Populate job_run counters from audit summary.
+            job.set_queued(summary.attempted)
+            job.inc("processed", summary.parse_success)
+            job.inc("recovered", summary.auto_recovered)
+            job.bump_stage("pending", summary.pending)
+            job.bump_stage("skipped", summary.skipped)
+            if summary.time_budget_hit:
+                job.bump_stage("time_budget_hit", 1)
+            return summary
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 def main():
     parser = argparse.ArgumentParser(description="Re-judge rejected articles with local judge")
     parser.add_argument("--since", default="24h", help="Look at rejected_at > now-SINCE (e.g. 24h, 7d)")
@@ -415,7 +438,7 @@ def main():
     parser.add_argument("--verbose", "-v", action="store_true", help="Per-article output")
     args = parser.parse_args()
 
-    summary = asyncio.run(run_audit(args))
+    summary = asyncio.run(run_audit_tracked(args))
     print(f"\n[AUDIT SUMMARY] {summary.as_dict()}")
 
 

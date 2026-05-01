@@ -22,6 +22,7 @@ from llm_pipeline.inference_logger import InferenceLogger
 from preprocessing import BlogPostProcessor, parse_article_text_from_html
 from errors import ProcessingError, ErrorCategory, ErrorSeverity, classify_exception
 from logger import logger
+from observability import JobRun, Stage, delete_from_queue_sync, update_queue_status
 from sqlalchemy.sql import text, bindparam
 
 # --- Reject reason constants ---------------------------------------------------
@@ -285,6 +286,10 @@ async def main_async(embedder=None, store=None):
         )
         await asyncio.to_thread(conn.session_execute, q, {"ids": ids})
 
+    async def mark_queue_status(article_id, status, error_msg):
+        await asyncio.to_thread(update_queue_status, conn, article_id,
+                                status=status, error=error_msg)
+
     code_metadata = get_metadata()
     sql_metadata = conn.execute(
         get_metadata(sql=True)
@@ -292,16 +297,16 @@ async def main_async(embedder=None, store=None):
 
     # LLM Model | Embedding Model | Metadata Update
     if code_metadata != sql_metadata:
-        print("[LLM Config] Updating...")
+        logger.info("LLM config updated", code=str(code_metadata), sql=str(sql_metadata))
         update_query, update_params, insert_query = update_model_config_query()
         conn.session_execute(update_query, update_params)
         conn.session_execute(insert_query)
 
-    print("[FETCH] Getting articles from queue...")
     queued = conn.execute(QUEUE_QUERY)
-    print(f"[FETCH DONE] {len(queued)} articles fetched.")
+    queued_rows = queued.to_dict(orient="records") if queued is not None else []
+    logger.info("Queue fetched", count=len(queued_rows))
 
-    if queued is None or len(queued) == 0:
+    if not queued_rows:
         return HTTPResponse(HTTPStatus.OK, "Article Queue Empty").get_response()
 
     # Inference logger (Phase 1 평가 인프라)
@@ -313,140 +318,179 @@ async def main_async(embedder=None, store=None):
             temperature=LLM_CONFIG.temperature,
         )
 
+    successful_ids = []
+    rejected_articles = []
+
     try:
-        # 1단계: 모든 article 병렬 처리 (전처리 + LLM)
-        tasks = [process_article(row) for row in queued.to_dict(orient="records")]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        insert_rows = []
-        successful_ids = []          # article_ids headed for the article table
-        rejected_articles = []       # RejectedArticle instances headed for article_rejected
-        processing_errors = []
-
-        for raw_result in results:
-            if isinstance(raw_result, Exception):
-                print(f"[ERROR] Task exception: {raw_result}")
-                continue
-            if isinstance(raw_result, ProcessingError):
-                processing_errors.append(raw_result)
-                if raw_result.is_retryable:
-                    print(f"[RETRY-LATER] {raw_result.article_id} will be retried (transient error)")
-                else:
-                    print(f"[SKIP] {raw_result.article_id} skipped (permanent error)")
-                continue
-
-            # process_article은 항상 (result, llm_query, inference) 튜플 반환
-            result, llm_query, inference = raw_result
-
-            # 추론 로깅 (LLM 호출이 있었던 경우만)
-            if inf_logger and inference is not None:
-                if isinstance(result, RejectedArticle):
-                    outcome = f"rejected_{result.reject_reason}"
-                else:
-                    outcome = "accepted"
-                inf_logger.log(
-                    article_id=result.article_id if isinstance(result, RejectedArticle) else result[1],
-                    input_text=llm_query,
-                    result=inference,
-                    outcome=outcome,
-                )
-
-            if isinstance(result, RejectedArticle):
-                rejected_articles.append(result)
-                continue
-            if result:
-                values, article_id, quality_score = result
-                insert_rows.append((values, quality_score))
-                successful_ids.append(article_id)
-
-        # --- 2단계: 거부 아티클을 article_rejected로 이관 ---
-        if rejected_articles:
-            print(f"[REJECTED] Moving {len(rejected_articles)} articles to article_rejected")
-            rejected_dicts = [asdict(r) for r in rejected_articles]
-            await asyncio.to_thread(conn.session_execute, REJECTED_INSERT_QUERY, rejected_dicts)
-
-            rejected_ids = [r.article_id for r in rejected_articles]
-            await delete_from_queue(rejected_ids)
-
-        # 승인된 아티클이 하나도 없으면 여기서 종료 (queue는 이미 정리됨)
-        if not insert_rows:
-            if inf_logger:
-                await inf_logger.flush(conn)
-            await asyncio.to_thread(conn.close)
-            return HTTPResponse(HTTPStatus.OK, "No accepted articles this batch").get_response()
-
-        # --- 3단계: 임베딩 및 벡터 DB 저장 (승인된 것만) ---
-        print(f"[INSERT] Processing {len(insert_rows)} records...")
-        insert_dicts = []
-        for values, quality_score in insert_rows:
-            d = dict(zip(COLUMN_NAMES, values))
-            insert_dicts.append(d)
-
-        print(f"[Embedding & Qdrant] Process Starting...")
-        embedder = embedder or TextEmbeddings()
-        store = store or QdrantVectorStore(
-            collection_name="bite-vectordb",
-            vector_dim=int(os.getenv("EMBEDDING_SIZE")),
-        )
-
-        embedding_tasks = [
-            process_embedding(row, embedder)
-            for row in insert_dicts
-        ]
-        embedding_results = await asyncio.gather(*embedding_tasks, return_exceptions=True)
-
-        qdrant_points = []
-        failed_ids = []
-        for i, result in enumerate(embedding_results):
-            if isinstance(result, Exception):
-                failed_ids.append(insert_dicts[i]['article_id'])
-                print(f"[Embedding Error] Article ID: {insert_dicts[i]['article_id']} - {result}")
-            else:
-                qdrant_points.append(result)
-
-        if not qdrant_points:
-            await asyncio.to_thread(conn.close)
-            return HTTPResponse(HTTPStatus.INTERNAL_SERVER_ERROR, "All embeddings failed").get_response()
+      with JobRun(conn, "harvest_post") as job:
+        job.set_queued(len(queued_rows))
 
         try:
-            print(f"[Qdrant] Batch upserting {len(qdrant_points)} points...")
-            await asyncio.to_thread(store.upsert_points, qdrant_points)
+            # 1단계: 모든 article 병렬 처리 (전처리 + LLM)
+            tasks = [process_article(row) for row in queued_rows]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            insert_rows = []
+
+            for idx, raw_result in enumerate(results):
+                row = queued_rows[idx]
+                article_id = row.get("article_id")
+
+                if isinstance(raw_result, Exception):
+                    job.add_failure(
+                        stage=Stage.PROCESS_ARTICLE,
+                        article_id=article_id,
+                        blog_id=row.get("blog_id"),
+                        url=row.get("url"),
+                        title=row.get("title"),
+                        exc=raw_result,
+                        error_severity="permanent",
+                        queue_row=row,
+                    )
+                    # Drop from queue — re-running won't help.
+                    await asyncio.to_thread(delete_from_queue_sync, conn, [article_id])
+                    continue
+
+                if isinstance(raw_result, ProcessingError):
+                    if raw_result.is_retryable:
+                        # Transient: leave in queue, mark status, continue.
+                        job.bump_stage(f"{raw_result.category.value}_transient", 1)
+                        await mark_queue_status(
+                            article_id, "transient_failed",
+                            f"[{raw_result.category.value}] {raw_result.message}",
+                        )
+                        logger.warning(
+                            "Article transient failure (retain in queue)",
+                            article_id=article_id,
+                            category=raw_result.category.value,
+                            message=raw_result.message,
+                        )
+                    else:
+                        # Permanent: dead-letter + drop from queue.
+                        job.add_failure(
+                            stage=raw_result.category.value,
+                            article_id=article_id,
+                            blog_id=row.get("blog_id"),
+                            url=row.get("url"),
+                            title=row.get("title"),
+                            exc=raw_result.original_exception,
+                            error_category=raw_result.category.value,
+                            error_severity=raw_result.severity.value,
+                            error_message=raw_result.message,
+                            queue_row=row,
+                        )
+                        await asyncio.to_thread(delete_from_queue_sync, conn, [article_id])
+                    continue
+
+                # process_article은 항상 (result, llm_query, inference) 튜플 반환
+                result, llm_query, inference = raw_result
+
+                if inf_logger and inference is not None:
+                    if isinstance(result, RejectedArticle):
+                        outcome = f"rejected_{result.reject_reason}"
+                    else:
+                        outcome = "accepted"
+                    inf_logger.log(
+                        article_id=result.article_id if isinstance(result, RejectedArticle) else result[1],
+                        input_text=llm_query,
+                        result=inference,
+                        outcome=outcome,
+                    )
+
+                if isinstance(result, RejectedArticle):
+                    rejected_articles.append(result)
+                    job.bump_stage(f"reject_{result.reject_reason}", 1)
+                    continue
+
+                if result:
+                    values, art_id, quality_score = result
+                    insert_rows.append((values, quality_score))
+                    successful_ids.append(art_id)
+
+            job.inc("rejected", len(rejected_articles))
+
+            # --- 2단계: 거부 아티클을 article_rejected로 이관 ---
+            if rejected_articles:
+                logger.info("Moving rejected articles", count=len(rejected_articles))
+                rejected_dicts = [asdict(r) for r in rejected_articles]
+                await asyncio.to_thread(conn.session_execute, REJECTED_INSERT_QUERY, rejected_dicts)
+                rejected_ids = [r.article_id for r in rejected_articles]
+                await delete_from_queue(rejected_ids)
+
+            if not insert_rows:
+                return HTTPResponse(HTTPStatus.OK, "No accepted articles this batch").get_response()
+
+            # --- 3단계: 임베딩 및 벡터 DB 저장 (승인된 것만) ---
+            logger.info("Embedding phase starting", count=len(insert_rows))
+            insert_dicts = [dict(zip(COLUMN_NAMES, values)) for values, _qs in insert_rows]
+
+            embedder = embedder or TextEmbeddings()
+            store = store or QdrantVectorStore(
+                collection_name="bite-vectordb",
+                vector_dim=int(os.getenv("EMBEDDING_SIZE")),
+            )
+
+            embedding_tasks = [process_embedding(row, embedder) for row in insert_dicts]
+            embedding_results = await asyncio.gather(*embedding_tasks, return_exceptions=True)
+
+            qdrant_points = []
+            embed_failed_ids = []
+            for i, result in enumerate(embedding_results):
+                aid = insert_dicts[i]["article_id"]
+                if isinstance(result, Exception):
+                    embed_failed_ids.append(aid)
+                    job.bump_stage("embedding_failed", 1)
+                    await mark_queue_status(aid, "transient_failed",
+                                            f"embedding: {type(result).__name__}: {result}")
+                    logger.warning("Embedding failed (retain in queue)",
+                                   article_id=aid, error=str(result),
+                                   error_class=type(result).__name__)
+                else:
+                    qdrant_points.append(result)
+
+            if not qdrant_points:
+                logger.error("All embeddings failed", count=len(insert_dicts))
+                return HTTPResponse(HTTPStatus.INTERNAL_SERVER_ERROR, "All embeddings failed").get_response()
+
+            try:
+                logger.info("Qdrant batch upsert", count=len(qdrant_points))
+                await asyncio.to_thread(store.upsert_points, qdrant_points)
+            except Exception as e:
+                job.bump_stage("qdrant_failed", len(qdrant_points))
+                err_msg = f"qdrant: {type(e).__name__}: {e}"
+                for p in qdrant_points:
+                    await mark_queue_status(p.get("id"), "transient_failed", err_msg)
+                logger.error("Qdrant batch upsert failed", error=str(e), count=len(qdrant_points))
+                return HTTPResponse(HTTPStatus.INTERNAL_SERVER_ERROR, f"Qdrant: {e}").get_response()
+
+            if embed_failed_ids:
+                insert_dicts = [d for d in insert_dicts if d["article_id"] not in embed_failed_ids]
+                successful_ids = [aid for aid in successful_ids if aid not in embed_failed_ids]
+
+            if insert_dicts:
+                await asyncio.to_thread(conn.session_execute, INSERT_QUERY, insert_dicts)
+
+            if successful_ids:
+                logger.info("Removing processed articles from queue", count=len(successful_ids))
+                await delete_from_queue(successful_ids)
+
+            job.inc("processed", len(successful_ids))
+
         except Exception as e:
-            error_msg = f"[Qdrant Error] Batch upsert failed: {e}"
-            print(error_msg)
-            await asyncio.to_thread(conn.close)
-            return HTTPResponse(HTTPStatus.INTERNAL_SERVER_ERROR, error_msg).get_response()
-
-        # 임베딩 실패한 건 article 테이블에도 안 넣고 queue에 유지 → 다음 실행에서 재처리
-        if failed_ids:
-            print(f"[RETAIN] Keeping {len(failed_ids)} failed articles in queue for retry: {failed_ids}")
-            insert_dicts = [d for d in insert_dicts if d['article_id'] not in failed_ids]
-            successful_ids = [aid for aid in successful_ids if aid not in failed_ids]
-
-        if insert_dicts:
-            await asyncio.to_thread(conn.session_execute, INSERT_QUERY, insert_dicts)
-
-        # 승인된 아티클을 queue에서 제거
-        if successful_ids:
-            print(f"[DELETE] Removing {len(successful_ids)} successfully processed articles from queue...")
-            await delete_from_queue(successful_ids)
-
-    except Exception as e:
-        print(f"[FATAL ERROR] {str(e)}")
+            logger.error("Fatal error in main_async", error=str(e), error_class=type(e).__name__)
+            job.error_summary = f"{type(e).__name__}: {e}"
+            return HTTPResponse(HTTPStatus.INTERNAL_SERVER_ERROR, str(e)).get_response()
+    finally:
         if inf_logger:
-            await inf_logger.flush(conn)
-        await asyncio.to_thread(conn.close)
-        return HTTPResponse(HTTPStatus.INTERNAL_SERVER_ERROR, str(e)).get_response()
+            try:
+                await inf_logger.flush(conn)
+            except Exception as e:
+                logger.error("inf_logger flush failed", error=str(e))
+        try:
+            await asyncio.to_thread(conn.close)
+        except Exception as e:
+            logger.error("conn.close failed", error=str(e))
 
-    if inf_logger:
-        await inf_logger.flush(conn)
-    await asyncio.to_thread(conn.close)
-    logger.info(
-        "Harvest post completed",
-        stage="done",
-        processed=len(successful_ids),
-        rejected=len(rejected_articles),
-    )
     return HTTPResponse(HTTPStatus.CREATED).get_response()
 
 

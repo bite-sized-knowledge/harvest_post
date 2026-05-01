@@ -26,6 +26,7 @@ from typing import Optional
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from db_conn import Connection
+from observability import JobRun
 from embedder import TextEmbeddings
 from qdrant_config import QdrantVectorStore
 from config import (
@@ -170,12 +171,6 @@ async def run_recovery(args) -> RecoveryCounts:
         conn.close()
         return counts
 
-    # --- Build article rows ---
-    now = None
-    # Use DB NOW() so timestamps are consistent regardless of script clock.
-    # Simplest: let the upsert leave created_at/updated_at as-is (they get
-    # the DB default) — but INSERT_QUERY expects them as bind params. Pass
-    # Python datetime.
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -267,13 +262,33 @@ async def run_recovery(args) -> RecoveryCounts:
     return counts
 
 
+async def run_recovery_tracked(args) -> RecoveryCounts:
+    """Wrap run_recovery with a JobRun row so monitor can show last recover run + counters."""
+    conn = Connection()
+    try:
+        with JobRun(conn, "recover_rejected") as job:
+            counts = await run_recovery(args)
+            job.set_queued(counts.eligible)
+            job.inc("processed", counts.inserted)
+            job.inc("recovered", counts.inserted)
+            job.inc("failed", counts.failed)
+            job.bump_stage("embedded", counts.embedded)
+            job.bump_stage("qdrant_upserted", counts.qdrant_upserted)
+            return counts
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 def main():
     parser = argparse.ArgumentParser(description="Recover false-positive rejected articles")
     parser.add_argument("--limit", type=int, default=200, help="Max rows to recover per run")
     parser.add_argument("--dry-run", action="store_true", help="Show eligible rows without modifying DB")
     args = parser.parse_args()
 
-    counts = asyncio.run(run_recovery(args))
+    counts = asyncio.run(run_recovery_tracked(args))
     print(f"\n[RECOVER SUMMARY] {counts.as_dict()}")
 
 
