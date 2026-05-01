@@ -288,15 +288,19 @@ async def run_audit(args) -> AuditSummary:
         )
 
         # pandas는 NULL을 NaN(float)으로 들고온다. `or 1` 단축평가는 NaN을 truthy로
-        # 판정해서 int(NaN) → ValueError로 죽음. None과 NaN을 둘 다 1로 내려야 함.
-        oq_raw = row.get("original_quality")
-        oq = 1 if oq_raw is None or (isinstance(oq_raw, float) and oq_raw != oq_raw) else int(oq_raw)
+        # 판정해서 int(NaN) → ValueError로 죽음. None과 NaN을 둘 다 default로 내려야 함.
+        def _safe_oq(default: int) -> int:
+            v = row.get("original_quality")
+            if v is None or (isinstance(v, float) and v != v):
+                return default
+            return int(v)
+        oq_for_judge = _safe_oq(1)  # judge prompt: 비교 baseline은 최소 1
         invocation: JudgeInvocation = await judge.judge(
             article_id=article_id,
             title=row.get("title") or "",
             description=desc_processed,
             body=body_processed,
-            original_quality=oq,
+            original_quality=oq_for_judge,
             original_reason=row.get("original_reason") or "unknown",
         )
 
@@ -316,7 +320,7 @@ async def run_audit(args) -> AuditSummary:
 
         disagreement: Optional[int] = None
         if judge_quality is not None:
-            disagreement = int(judge_quality) - int(row.get("original_quality") or 0)
+            disagreement = int(judge_quality) - _safe_oq(0)
 
         review_status = compute_gate(
             judge_quality=judge_quality,
@@ -345,7 +349,7 @@ async def run_audit(args) -> AuditSummary:
 
         insert_buffer.append({
             "article_id": article_id,
-            "original_quality": int(row.get("original_quality") or 0),
+            "original_quality": _safe_oq(0),
             "original_reason": row.get("original_reason") or "unknown",
             "judge_model": JUDGE_MODEL_KEY,
             "judge_quality": judge_quality,
