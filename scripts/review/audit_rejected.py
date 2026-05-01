@@ -287,12 +287,16 @@ async def run_audit(args) -> AuditSummary:
             content=row.get("content") or "",
         )
 
+        # pandas는 NULL을 NaN(float)으로 들고온다. `or 1` 단축평가는 NaN을 truthy로
+        # 판정해서 int(NaN) → ValueError로 죽음. None과 NaN을 둘 다 1로 내려야 함.
+        oq_raw = row.get("original_quality")
+        oq = 1 if oq_raw is None or (isinstance(oq_raw, float) and oq_raw != oq_raw) else int(oq_raw)
         invocation: JudgeInvocation = await judge.judge(
             article_id=article_id,
             title=row.get("title") or "",
             description=desc_processed,
             body=body_processed,
-            original_quality=int(row.get("original_quality") or 1),
+            original_quality=oq,
             original_reason=row.get("original_reason") or "unknown",
         )
 
