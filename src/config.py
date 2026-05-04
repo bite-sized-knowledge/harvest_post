@@ -211,8 +211,17 @@ REJECTED_COLUMNS = [
     'quality_score', 'reject_reason',
 ]
 
+# INSERT IGNORE → ON DUPLICATE KEY UPDATE 로 변경.
+# 같은 article_id 가 이미 article_rejected 에 있을 때 IGNORE 는 silent skip 하므로,
+# 같은 글이 무한히 큐 → reject → silent skip → 큐 → ... 루프를 돌아도 row 갱신이
+# 없어 모니터/로그상 흔적이 남지 않는다 (2026-05-01 ~ 05-04 60시간 사고 원인).
+# rejected_at 와 reject_reason / quality_score 를 매번 갱신해 재발 시 즉시 보이게.
 REJECTED_INSERT_QUERY = (
-    f"INSERT IGNORE INTO {REJECTED_TABLE} "
+    f"INSERT INTO {REJECTED_TABLE} "
     f"({', '.join(REJECTED_COLUMNS)}) "
-    f"VALUES ({', '.join([f':{c}' for c in REJECTED_COLUMNS])})"
+    f"VALUES ({', '.join([f':{c}' for c in REJECTED_COLUMNS])}) "
+    f"ON DUPLICATE KEY UPDATE "
+    f"rejected_at = CURRENT_TIMESTAMP, "
+    f"reject_reason = VALUES(reject_reason), "
+    f"quality_score = VALUES(quality_score)"
 )

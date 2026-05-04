@@ -145,6 +145,16 @@ class JobRun:
             status = JobStatus.FAILED.value
         elif self.failed > 0:
             status = JobStatus.PARTIAL.value
+        elif self.queued > 0 and self.processed == 0:
+            # 큐 N건을 모두 reject/skip 처리하고 article 한 건도 못 들였을 때.
+            # 정상 idle 사이클(queued=0)과 구분해서 PARTIAL 로 마킹해야 모니터/알람이
+            # 잡는다. SUCCESS 로 떨어지면 30사이클 내내 success 로 찍히고 silent
+            # data loss 가 가려진다 (2026-05-01 ~ 05-04 사고).
+            status = JobStatus.PARTIAL.value
+            self.error_summary = (
+                f"all {self.queued} queue rows produced 0 article inserts "
+                f"(rejected={self.rejected}, recovered={self.recovered})"
+            )
         else:
             status = JobStatus.SUCCESS.value
 
